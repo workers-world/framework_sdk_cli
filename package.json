@@ -1,0 +1,45 @@
+{
+  "name": "framework_sdk_cli",
+  "version": "0.1.0",
+  "description": "Workers-World Agent CLI 基建：进程信封、门户 runPortal、confirm、WorkerIo 映射（无业务命令）",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build",
+    "lint": "npx --yes @biomejs/biome@2.5.1 check src test",
+    "format": "npx --yes @biomejs/biome@2.5.1 format --write src test",
+    "typecheck": "tsc --noEmit -p tsconfig.src.json",
+    "check": "npm run lint && npm run typecheck"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "@workers-world:registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/workers-world/framework_sdk_cli.git"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
