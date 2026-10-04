@@ -6,6 +6,7 @@ import {
     type ProcessEnvelope,
     writeEnvelope,
 } from '../envelope/index.js';
+import { ensureDotEnvLoaded } from '../http/load-dotenv.js';
 import { searchTools } from '../search/index.js';
 import {
     clearRegisteredTools,
@@ -101,6 +102,7 @@ function finish(result: ProcessEnvelope, opts: RunPortalOptions, json: boolean):
  * 非 TTY 或 --json：只打进程信封到 stdout。
  */
 export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnvelope> {
+    ensureDotEnvLoaded();
     const portal = opts.portal ?? 'ww';
     const argv = opts.argv ?? process.argv.slice(2);
     const json = hasJsonFlag(argv) || !process.stdout.isTTY;

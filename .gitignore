@@ -7,3 +7,8 @@ coverage/
 graft/
 .idea
 .ignore
+
+# local secrets — use .env.example as template
+.env
+.env.local
+.env.*.local
