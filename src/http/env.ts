@@ -7,11 +7,13 @@ export function requireEnv(name: string): string {
 }
 
 export function resolveDeployTrackerBase(): string {
-    return (
-        process.env.DEPLOY_TRACKER_BASE?.trim() ||
-        process.env.DEPLOY_TRACKER_URL?.trim() ||
-        'https://deploy.mailworld.uk'
-    );
+    const v = process.env.DEPLOY_TRACKER_BASE?.trim() || process.env.DEPLOY_TRACKER_URL?.trim();
+    if (!v) {
+        throw Object.assign(new Error('DEPLOY_TRACKER_BASE or DEPLOY_TRACKER_URL required'), {
+            code: 'MISSING_ENV',
+        });
+    }
+    return v;
 }
 
 export function resolveRulesAdminToken(): string {
