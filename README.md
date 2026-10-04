@@ -15,3 +15,7 @@ npm run check && npm test && npm run build
 ```
 
 本地消费者：`file:../framework_sdk_cli` + `npm install --no-package-lock`。入仓用 `npm:@workers-world/framework_sdk_cli@x`。
+
+## CI / 发版
+
+对齐 `framework_sdk_ui`：`dev_*` → sync-lock + verify；合入 `master` → publish `@workers-world/framework_sdk_cli` + `v*` tag → GitHub Release。
