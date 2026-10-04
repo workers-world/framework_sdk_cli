@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveDeployTrackerBase } from '../../src/http/env.js';
+import { resetDotEnvLoadedForTests } from '../../src/http/load-dotenv.js';
 
 describe('resolveDeployTrackerBase', () => {
     afterEach(() => {
         delete process.env.DEPLOY_TRACKER_BASE;
         delete process.env.DEPLOY_TRACKER_URL;
+        resetDotEnvLoadedForTests();
     });
 
     it('returns DEPLOY_TRACKER_BASE when set', () => {
