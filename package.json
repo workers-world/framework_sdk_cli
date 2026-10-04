@@ -19,6 +19,26 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./envelope": {
+      "import": "./dist/envelope/index.js",
+      "types": "./dist/envelope/index.d.ts"
+    },
+    "./argv": {
+      "import": "./dist/argv/index.js",
+      "types": "./dist/argv/index.d.ts"
+    },
+    "./http": {
+      "import": "./dist/http/index.js",
+      "types": "./dist/http/index.d.ts"
+    },
+    "./portal": {
+      "import": "./dist/portal/index.js",
+      "types": "./dist/portal/index.d.ts"
+    },
+    "./search": {
+      "import": "./dist/search/index.js",
+      "types": "./dist/search/index.d.ts"
     }
   },
   "files": [

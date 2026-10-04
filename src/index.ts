@@ -1,46 +1,15 @@
-export {
-    hasConfirmFlag,
-    hasJsonFlag,
-    parseNamedArgs,
-    stripFlags,
-} from './confirm.js';
-export {
-    errorEnvelope,
-    needConfirmEnvelope,
-    okEnvelope,
-    type ProcessEnvelope,
-    writeEnvelope,
-} from './envelope.js';
-export {
-    EXIT,
-    type ExitCode,
-    retryableForExit,
-    type SideEffects,
-    sideEffectsForExit,
-} from './exit.js';
-export {
-    type FetchBearerOptions,
-    type FetchBearerResult,
-    fetchBearer,
-    mapWorkerIoToProcess,
-    parseWorkerIo,
-    requireEnv,
-    resolveDeployTrackerBase,
-    resolveRulesAdminToken,
-    type WorkerIoLike,
-} from './http.js';
-export {
-    clearRegisteredTools,
-    listRegisteredTools,
-    type RunPortalOptions,
-    registerTool,
-    runPortal,
-} from './portal.js';
-export { searchTools } from './search.js';
-export type {
-    CommandHandler,
-    PortalContext,
-    SearchMatch,
-    ToolCommand,
-    ToolRegistration,
-} from './types.js';
+/**
+ * framework_sdk_cli — Agent CLI 基建（根聚合导出）。
+ *
+ * 子包目录：
+ * - envelope/  进程信封 + exit
+ * - argv/      flag / 命名参数解析
+ * - http/      Bearer fetch + WorkerIo → 进程信封
+ * - portal/    registerTool / runPortal
+ * - search/    门户级 search 引擎
+ */
+export * from './argv/index.js';
+export * from './envelope/index.js';
+export * from './http/index.js';
+export * from './portal/index.js';
+export * from './search/index.js';

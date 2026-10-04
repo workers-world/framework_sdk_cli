@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { okEnvelope } from '../src/envelope.js';
+import { okEnvelope } from '../../src/envelope/index.js';
 import {
     clearRegisteredTools,
     listRegisteredTools,
     registerTool,
     runPortal,
-} from '../src/portal.js';
-import { searchTools } from '../src/search.js';
+} from '../../src/portal/index.js';
+import { searchTools } from '../../src/search/index.js';
 
 afterEach(() => {
     clearRegisteredTools();

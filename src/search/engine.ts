@@ -1,4 +1,4 @@
-import type { SearchMatch, ToolRegistration } from './types.js';
+import type { SearchMatch, ToolRegistration } from '../portal/types.js';
 
 function tokenize(q: string): string[] {
     return q

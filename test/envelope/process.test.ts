@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { errorEnvelope, needConfirmEnvelope, okEnvelope } from '../src/envelope.js';
-import { EXIT } from '../src/exit.js';
-import { mapWorkerIoToProcess } from '../src/http.js';
+import { EXIT, errorEnvelope, needConfirmEnvelope, okEnvelope } from '../../src/envelope/index.js';
+import { mapWorkerIoToProcess } from '../../src/http/index.js';
 
 describe('process envelope', () => {
     it('okEnvelope sets exit 0', () => {

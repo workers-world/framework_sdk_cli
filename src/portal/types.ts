@@ -1,4 +1,4 @@
-import type { ProcessEnvelope } from './envelope.js';
+import type { ProcessEnvelope } from '../envelope/index.js';
 
 export type CommandHandler = (
     argv: string[],

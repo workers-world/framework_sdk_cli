@@ -1,25 +1,21 @@
-import { hasJsonFlag, parseNamedArgs } from './confirm.js';
-import { errorEnvelope, okEnvelope, type ProcessEnvelope, writeEnvelope } from './envelope.js';
-import { EXIT } from './exit.js';
-import { searchTools } from './search.js';
-import type { PortalContext, ToolRegistration } from './types.js';
+import { hasJsonFlag, parseNamedArgs } from '../argv/index.js';
+import {
+    EXIT,
+    errorEnvelope,
+    okEnvelope,
+    type ProcessEnvelope,
+    writeEnvelope,
+} from '../envelope/index.js';
+import { searchTools } from '../search/index.js';
+import {
+    clearRegisteredTools,
+    getRegisteredTool,
+    listRegisteredTools,
+    registerTool,
+} from './registry.js';
+import type { PortalContext } from './types.js';
 
-const registry = new Map<string, ToolRegistration>();
-
-export function registerTool(tool: ToolRegistration): void {
-    if (!tool.id.trim()) {
-        throw new Error('registerTool: id required');
-    }
-    registry.set(tool.id, tool);
-}
-
-export function listRegisteredTools(): ToolRegistration[] {
-    return [...registry.values()].sort((a, b) => a.id.localeCompare(b.id));
-}
-
-export function clearRegisteredTools(): void {
-    registry.clear();
-}
+export { clearRegisteredTools, listRegisteredTools, registerTool };
 
 function agentNotice(): string {
     return 'Agent: write ops need --confirm after user approval; prefer --json; never put tokens in argv.';
@@ -37,7 +33,7 @@ function helpText(toolId?: string): string {
         '',
     ];
     if (toolId) {
-        const tool = registry.get(toolId);
+        const tool = getRegisteredTool(toolId);
         if (!tool) {
             lines.push(`Unknown tool: ${toolId}`);
             lines.push(
@@ -168,7 +164,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         );
     }
 
-    const tool = registry.get(head);
+    const tool = getRegisteredTool(head);
     if (!tool) {
         const near = nearestToolIds(head);
         return finish(

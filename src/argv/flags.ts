@@ -1,5 +1,5 @@
 /**
- * 写操作守闸：禁止交互 y/N 当唯一闸；须显式 --confirm。
+ * argv / 守闸 flag：禁止交互 y/N 当唯一闸；写操作须显式 --confirm。
  */
 export function hasConfirmFlag(argv: string[]): boolean {
     return argv.includes('--confirm');

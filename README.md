@@ -2,12 +2,16 @@
 
 Workers-World **Agent CLI 基建**（库，无产品 bin）。
 
-- 进程信封 `{ ok, data, error, warnings, meta }`（≠ Worker `WorkerIoEnvelope`）
-- `registerTool` / `runPortal`（门户由 [ww](https://github.com/workers-world/ww) 仓提供）
-- `fetchBearer` + `mapWorkerIoToProcess`
-- `--confirm` 守闸；`searchTools`（门户 `ww search`）
+| 子包 | 职责 |
+|------|------|
+| `envelope/` | 进程信封 + exit 码 |
+| `argv/` | `--confirm` / `--json` / 命名参数 |
+| `http/` | Bearer fetch、WorkerIo→进程信封、env |
+| `portal/` | `registerTool` / `runPortal` |
+| `search/` | 门户级 `searchTools` |
 
-业务命令（如 `pgreq`）**不要**放进本仓。
+根 `src/index.ts` 只做聚合导出；也可 `import … from 'framework_sdk_cli/portal'`。  
+业务命令（如 `pgreq`）**不要**放进本仓——在 [ww](https://github.com/workers-world/ww) 登记。
 
 ```bash
 npm install
