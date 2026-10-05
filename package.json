@@ -39,6 +39,10 @@
     "./search": {
       "import": "./dist/search/index.js",
       "types": "./dist/search/index.d.ts"
+    },
+    "./workspace": {
+      "import": "./dist/workspace/index.js",
+      "types": "./dist/workspace/index.d.ts"
     }
   },
   "files": [

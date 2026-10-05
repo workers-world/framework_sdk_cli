@@ -28,6 +28,8 @@ export interface ToolRegistration {
     /** 额外关键词供 search */
     keywords?: string[];
     commands: ToolCommand[];
+    /** `ww <tool>` 无子命令时调用（替代默认 help），如 wt 交互菜单 */
+    defaultHandler?: CommandHandler;
 }
 
 export interface SearchMatch {

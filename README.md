@@ -9,6 +9,7 @@ Workers-World **Agent CLI 基建**（库，无产品 bin）。
 | `http/` | Bearer fetch、WorkerIo→进程信封、env |
 | `portal/` | `registerTool` / `runPortal` |
 | `search/` | 门户级 `searchTools` |
+| `workspace/` | `registerWorkspaceTools()`（WW-126，`ww wt`） |
 
 根 `src/index.ts` 只做聚合导出；也可 `import … from 'framework_sdk_cli/portal'`。  
 业务命令（如 `pgreq`）**不要**放进本仓——在 [ww](https://github.com/workers-world/ww) 登记。

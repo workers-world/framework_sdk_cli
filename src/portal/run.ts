@@ -186,6 +186,13 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
 
     const cmdName = positional[1];
     if (!cmdName || cmdName === 'help' || cmdName === '--help') {
+        if (!cmdName && tool.defaultHandler) {
+            const result = await tool.defaultHandler(argv.slice(argv.indexOf(head) + 1), {
+                ...ctx,
+                toolId: tool.id,
+            });
+            return finish(result, opts, json);
+        }
         const text = helpText(tool.id);
         if (!json) {
             (opts.stderr ?? process.stderr).write(`${text}\n`);
