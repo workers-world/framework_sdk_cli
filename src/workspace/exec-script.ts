@@ -1,13 +1,17 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { colorizeLogLine, shouldColorStream } from '../cli/color.js';
-import type { PortalContext } from '../portal/types.js';
-import { scriptById } from './scripts.js';
+import type { WorkspaceTool } from './catalog.js';
+import { applySkipArgs } from './skip-apply.js';
 
-export interface ExecScriptResult {
+export interface RunToolResult {
     exitCode: number;
-    toolId: string;
+    argv: string[];
+    skip: string[];
     scriptPath: string;
+    signal?: string;
+    spawnError?: string;
 }
 
 function createLineWriter(
@@ -36,46 +40,93 @@ function createLineWriter(
     };
 }
 
-export async function execWorkspaceScript(
-    toolId: string,
-    scriptArgs: string[],
-    ctx: PortalContext,
+export async function runWorkspaceTool(
+    tool: WorkspaceTool,
+    args: string[],
     workspaceRoot: string,
-    io?: { stdout?: NodeJS.WritableStream; stderr?: NodeJS.WritableStream },
-): Promise<ExecScriptResult> {
-    const def = scriptById(toolId);
-    if (!def) {
-        return { exitCode: 127, toolId, scriptPath: '' };
+    opts: {
+        json: boolean;
+        io?: { stdout?: NodeJS.WritableStream; stderr?: NodeJS.WritableStream };
+    },
+): Promise<RunToolResult> {
+    const scriptPath = join(workspaceRoot, tool.script);
+    if (!existsSync(scriptPath)) {
+        return {
+            exitCode: 1,
+            argv: args,
+            skip: [],
+            scriptPath,
+        };
     }
-    const scriptPath = join(workspaceRoot, def.file);
+
     const discard = { write: () => true } as unknown as NodeJS.WritableStream;
-    const out = ctx.json ? discard : (io?.stdout ?? process.stdout);
-    const err = ctx.json ? discard : (io?.stderr ?? process.stderr);
+    const out = opts.json ? discard : (opts.io?.stdout ?? process.stdout);
+    const err = opts.json ? discard : (opts.io?.stderr ?? process.stderr);
+
+    const applied = applySkipArgs(
+        workspaceRoot,
+        tool,
+        args,
+        (line) =>
+            err.write(`${colorizeLogLine(line, shouldColorStream(err, { json: opts.json }))}\n`),
+        (line) =>
+            err.write(`${colorizeLogLine(line, shouldColorStream(err, { json: opts.json }))}\n`),
+    );
+    const runArgs = applied.args;
+
     const env = { ...process.env };
-    if (ctx.json) {
+    if (opts.json) {
         env.NO_COLOR = '1';
     }
 
-    const colorOut = shouldColorStream(out, { json: ctx.json });
-    const colorErr = shouldColorStream(err, { json: ctx.json });
+    const isNode = tool.script.endsWith('.mjs') || tool.script.endsWith('.js');
+    const isShell = tool.script.endsWith('.sh');
+    let cmd: string;
+    let cmdArgs: string[];
+    if (isNode) {
+        cmd = process.execPath;
+        cmdArgs = [scriptPath, ...runArgs];
+    } else if (isShell) {
+        cmd = 'bash';
+        cmdArgs = [scriptPath, ...runArgs];
+    } else {
+        cmd = scriptPath;
+        cmdArgs = runArgs;
+    }
 
-    const exitCode = await new Promise<number>((resolve, reject) => {
-        const outWriter = createLineWriter(out, colorOut);
-        const errWriter = createLineWriter(err, colorErr);
-        const child = spawn('bash', [scriptPath, ...scriptArgs], {
+    const colorOut = shouldColorStream(out, { json: opts.json });
+    const colorErr = shouldColorStream(err, { json: opts.json });
+
+    return new Promise((resolve) => {
+        const child = spawn(cmd, cmdArgs, {
             cwd: workspaceRoot,
             env,
             stdio: ['ignore', 'pipe', 'pipe'],
+            shell: false,
         });
+        const outWriter = createLineWriter(out, colorOut);
+        const errWriter = createLineWriter(err, colorErr);
         child.stdout.on('data', (c: Buffer) => outWriter.write(c.toString('utf8')));
         child.stderr.on('data', (c: Buffer) => errWriter.write(c.toString('utf8')));
-        child.on('error', reject);
-        child.on('close', (code) => {
+        child.on('error', (spawnErr) => {
+            resolve({
+                exitCode: 127,
+                argv: runArgs,
+                skip: applied.skip,
+                scriptPath,
+                spawnError: spawnErr.message,
+            });
+        });
+        child.on('close', (code, signal) => {
             outWriter.flush();
             errWriter.flush();
-            resolve(code ?? 1);
+            resolve({
+                exitCode: signal ? 1 : (code ?? 1),
+                argv: runArgs,
+                skip: applied.skip,
+                scriptPath,
+                ...(signal ? { signal } : {}),
+            });
         });
     });
-
-    return { exitCode, toolId, scriptPath };
 }

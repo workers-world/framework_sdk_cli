@@ -1,38 +1,79 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 
-/** 新跳过列表文件名（不读旧 `.wt-skip.json`）。 */
+/** 新跳过列表文件名（不读 `.wt-skip.json`；格式与旧 skip 对象相同）。 */
 export const WORKSPACE_SKIP_FILENAME = '.ww-workspace-skip.json';
 
-export interface WorkspaceSkipFile {
-    version: 1;
-    /** 相对工作区根的路径，或仓目录名 */
-    repos: string[];
+export interface WorkspaceSkipData {
+    skip: Record<string, string[]>;
 }
 
 export function skipFilePath(workspaceRoot: string): string {
     return join(workspaceRoot, WORKSPACE_SKIP_FILENAME);
 }
 
-export function readSkipFile(workspaceRoot: string): WorkspaceSkipFile {
+export function normalizeRepoName(raw: string): string {
+    let s = String(raw ?? '').trim();
+    if (!s) {
+        return '';
+    }
+    s = s.replace(/\/+$/, '');
+    if (s === '.' || s === 'meta-root') {
+        return 'meta-root';
+    }
+    return basename(s);
+}
+
+export function uniqueRepos(names: string[]): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of names) {
+        const n = normalizeRepoName(raw);
+        if (!n || seen.has(n)) {
+            continue;
+        }
+        seen.add(n);
+        out.push(n);
+    }
+    return out.sort();
+}
+
+export function loadSkipFile(workspaceRoot: string): WorkspaceSkipData {
     const path = skipFilePath(workspaceRoot);
+    if (!existsSync(path)) {
+        return { skip: {} };
+    }
     try {
-        const raw = readFileSync(path, 'utf8');
-        const parsed = JSON.parse(raw) as WorkspaceSkipFile;
-        if (parsed?.version !== 1 || !Array.isArray(parsed.repos)) {
-            throw new Error('invalid skip file shape');
+        const raw = JSON.parse(readFileSync(path, 'utf8')) as { skip?: Record<string, string[]> };
+        const skip = raw && typeof raw.skip === 'object' && raw.skip ? raw.skip : {};
+        const out: Record<string, string[]> = {};
+        for (const [k, v] of Object.entries(skip)) {
+            if (!Array.isArray(v)) {
+                continue;
+            }
+            out[k] = uniqueRepos(v);
         }
-        return { version: 1, repos: [...parsed.repos] };
+        return { skip: out };
     } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-            return { version: 1, repos: [] };
-        }
-        throw err;
+        const message = err instanceof Error ? err.message : String(err);
+        throw new SkipFileParseError(path, message);
     }
 }
 
-export function writeSkipFile(workspaceRoot: string, data: WorkspaceSkipFile): void {
-    const path = skipFilePath(workspaceRoot);
-    const body = `${JSON.stringify({ version: 1, repos: data.repos }, null, 2)}\n`;
-    writeFileSync(path, body, 'utf8');
+export class SkipFileParseError extends Error {
+    constructor(
+        readonly filePath: string,
+        detail: string,
+    ) {
+        super(`error: 无法解析 ${filePath}: ${detail}`);
+        this.name = 'SkipFileParseError';
+    }
+}
+
+export function saveSkipFile(workspaceRoot: string, data: WorkspaceSkipData): void {
+    writeFileSync(skipFilePath(workspaceRoot), `${JSON.stringify({ skip: data.skip }, null, 2)}\n`);
+}
+
+export function skipsFor(workspaceRoot: string, id: string): string[] {
+    return loadSkipFile(workspaceRoot).skip[id] ?? [];
 }

@@ -83,6 +83,9 @@ export function writeEnvelope(
         out.write(`${JSON.stringify(env)}\n`);
         return;
     }
+    if (env.meta.suppress_tty_status) {
+        return;
+    }
     if (env.ok) {
         const okLine = colorizeStatusLine(`${env.meta.command}: ok`, err, false);
         err.write(`${okLine}\n`);
