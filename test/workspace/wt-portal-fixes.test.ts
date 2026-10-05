@@ -1,27 +1,28 @@
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EXIT } from '../../src/envelope/index.js';
 import { clearRegisteredTools, runPortal } from '../../src/portal/index.js';
 import { registerWorkspaceTools } from '../../src/workspace/index.js';
 import { usageText } from '../../src/workspace/usage.js';
 import { wtErr } from '../../src/workspace/wt-envelope.js';
-
-const fixtureRoot = join(fileURLToPath(new URL('.', import.meta.url)), '../fixtures/workspace');
+import { isolatedWorkspaceFixture } from '../fixtures/isolated-workspace.js';
 
 function nullIo() {
     return { write: () => true } as unknown as NodeJS.WritableStream;
 }
 
 describe('ww wt portal fixes (WW-126 e2e)', () => {
+    let workspace: ReturnType<typeof isolatedWorkspaceFixture>;
+
     beforeEach(() => {
-        vi.stubEnv('WW_WORKSPACE_ROOT', fixtureRoot);
+        workspace = isolatedWorkspaceFixture();
+        vi.stubEnv('WW_WORKSPACE_ROOT', workspace.root);
         registerWorkspaceTools();
     });
 
     afterEach(() => {
         clearRegisteredTools();
         vi.unstubAllEnvs();
+        workspace.cleanup();
     });
 
     it('ww wt help uses wt handler not generic tool help', async () => {

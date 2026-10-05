@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { okEnvelope } from '../../src/envelope/index.js';
 import { clearRegisteredTools, registerTool, runPortal } from '../../src/portal/index.js';
+import { registerWorkspaceTools } from '../../src/workspace/index.js';
 
 const pgreqLike = {
     id: 'pgreq',
@@ -70,5 +71,25 @@ describe('portal tool help regression (base dev_00_01_00)', () => {
         const env2 = JSON.parse(io2.stdoutChunks[0] ?? '');
         expect(env2.data.help).toBe((r1.data as { help: string }).help);
         expect((r1.data as { help: string }).help).toContain('ww pgreq create');
+    });
+
+    it('pgreq issue mutating flag unchanged in ww list', async () => {
+        registerTool(pgreqLike);
+        registerWorkspaceTools();
+        const result = await runPortal({
+            argv: ['list', '--json'],
+            noExit: true,
+            stdout: { write: () => true } as unknown as NodeJS.WritableStream,
+            stderr: { write: () => true } as unknown as NodeJS.WritableStream,
+        });
+        const pgreq = (
+            result.data as {
+                tools: Array<{ id: string; commands: Array<{ name: string; mutating?: boolean }> }>;
+            }
+        ).tools.find((t) => t.id === 'pgreq');
+        const issue = pgreq?.commands.find((c) => c.name === 'issue');
+        expect(issue?.mutating).toBe(true);
+        const create = pgreq?.commands.find((c) => c.name === 'create');
+        expect(create?.mutating).toBeFalsy();
     });
 });

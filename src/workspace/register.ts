@@ -22,9 +22,11 @@ export interface RegisterWorkspaceToolsOptions {
  */
 export function registerWorkspaceTools(opts: RegisterWorkspaceToolsOptions = {}): void {
     setWorkspaceExtraRootStarts(opts.extraRootStarts ?? []);
+    const mutatingToolIds = new Set(['pull', 'push', 'bump-sdk']);
     const directCommands = WORKSPACE_CATALOG.map((s) => ({
         name: s.id,
         summary: s.summary,
+        mutating: mutatingToolIds.has(s.id),
         handler: (argv: string[], ctx: PortalContext) => handleWtDirectRun(s.id, argv, ctx),
     }));
 

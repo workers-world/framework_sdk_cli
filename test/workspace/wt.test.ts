@@ -1,11 +1,8 @@
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EXIT } from '../../src/envelope/index.js';
 import { clearRegisteredTools, runPortal } from '../../src/portal/index.js';
 import { registerWorkspaceTools } from '../../src/workspace/index.js';
-
-const fixtureRoot = join(fileURLToPath(new URL('.', import.meta.url)), '../fixtures/workspace');
+import { isolatedWorkspaceFixture } from '../fixtures/isolated-workspace.js';
 
 function nullIo() {
     return {
@@ -14,14 +11,18 @@ function nullIo() {
 }
 
 describe('ww wt workspace tools (WW-126)', () => {
+    let workspace: ReturnType<typeof isolatedWorkspaceFixture>;
+
     beforeEach(() => {
-        vi.stubEnv('WW_WORKSPACE_ROOT', fixtureRoot);
+        workspace = isolatedWorkspaceFixture();
+        vi.stubEnv('WW_WORKSPACE_ROOT', workspace.root);
         registerWorkspaceTools();
     });
 
     afterEach(() => {
         clearRegisteredTools();
         vi.unstubAllEnvs();
+        workspace.cleanup();
     });
 
     it('list --json envelope matches catalog', async () => {
@@ -37,6 +38,32 @@ describe('ww wt workspace tools (WW-126)', () => {
         expect(Array.isArray(data)).toBe(true);
         expect(data.map((t) => t.id)).toEqual(['pull', 'push', 'bump-sdk', 'remote', 'cloc']);
         expect(data[0]?.title).toBe('批量拉取');
+    });
+
+    it('ww list marks bulk repo tools mutating', async () => {
+        const result = await runPortal({
+            argv: ['list', '--json'],
+            noExit: true,
+            stdout: nullIo(),
+            stderr: nullIo(),
+        });
+        const tools = (
+            result.data as {
+                tools: Array<{ id: string; commands: Array<{ name: string; mutating: boolean }> }>;
+            }
+        ).tools;
+        const wt = tools.find((t) => t.id === 'wt');
+        expect(wt).toBeDefined();
+        const pull = wt?.commands.find((c) => c.name === 'pull');
+        const push = wt?.commands.find((c) => c.name === 'push');
+        const bump = wt?.commands.find((c) => c.name === 'bump-sdk');
+        const remote = wt?.commands.find((c) => c.name === 'remote');
+        const cloc = wt?.commands.find((c) => c.name === 'cloc');
+        expect(pull?.mutating).toBe(true);
+        expect(push?.mutating).toBe(true);
+        expect(bump?.mutating).toBe(true);
+        expect(remote?.mutating).toBe(false);
+        expect(cloc?.mutating).toBe(false);
     });
 
     it('run pull --json envelope and script exit 0', async () => {

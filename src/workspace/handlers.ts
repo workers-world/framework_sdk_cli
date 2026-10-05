@@ -22,6 +22,7 @@ import {
 import { skipUsageText, usageText } from './usage.js';
 import { runJsonData, wtErr, wtOk } from './wt-envelope.js';
 import { wtWriteStderr, wtWriteStdout } from './wt-io.js';
+import { prepareStdinForChildScript } from './wt-stdin.js';
 
 function rootOpts() {
     return { extraStarts: workspaceExtraRootStarts() };
@@ -454,9 +455,14 @@ export async function handleWtInteractive(
             });
         }
         process.stdout.write(`\n→ ${tool.script} ${args.join(' ')}\n\n`);
+        prepareStdinForChildScript(rl);
         const env = await executeTool(ctx, 'menu', tool, args, false);
         return env;
     } finally {
-        rl.close();
+        try {
+            rl.close();
+        } catch {
+            /* already closed before child script */
+        }
     }
 }
