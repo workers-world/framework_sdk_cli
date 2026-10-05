@@ -7,6 +7,12 @@ import type { PortalContext } from '../portal/types.js';
 import { catalogIds, findTool, WORKSPACE_CATALOG, type WorkspaceTool } from './catalog.js';
 import { workspaceExtraRootStarts } from './config.js';
 import { runWorkspaceTool } from './exec-script.js';
+import {
+    findWtExtension,
+    invokeWtExtension,
+    wtExtensionIds,
+    wtPortalExtensions,
+} from './extensions.js';
 import { takePortalFlags } from './flags.js';
 import { parseArgLine } from './parse-arg-line.js';
 import { requireWorkspaceRoot, resolveWorkspaceRoot } from './root.js';
@@ -79,6 +85,10 @@ function cmdListHuman(ctx: PortalContext, root: string): void {
         wtWriteStdout(ctx, `  ${t.id.padEnd(12)} ${t.title}${missing}\n`);
         wtWriteStdout(ctx, `               ${t.summary}\n`);
     }
+    for (const e of wtPortalExtensions()) {
+        wtWriteStdout(ctx, `  ${e.id.padEnd(12)} ${e.title}  [portal]\n`);
+        wtWriteStdout(ctx, `               ${e.summary}\n`);
+    }
     wtWriteStdout(ctx, '\nrun: ww wt <id> | ww wt run <id> [--] [args...]\n');
 }
 
@@ -90,13 +100,22 @@ export async function handleWtList(argv: string[], ctx: PortalContext): Promise<
     const root = rootRes;
     const { json } = takePortalFlags(argv);
     if (json || ctx.json) {
-        const payload = WORKSPACE_CATALOG.map(({ id, title, summary, script, examples }) => ({
-            id,
-            title,
-            summary,
-            script,
-            examples,
-        }));
+        const payload = [
+            ...WORKSPACE_CATALOG.map(({ id, title, summary, script, examples }) => ({
+                id,
+                title,
+                summary,
+                script,
+                examples,
+            })),
+            ...wtPortalExtensions().map((e) => ({
+                id: e.id,
+                title: e.title,
+                summary: e.summary,
+                kind: 'portal' as const,
+                examples: e.examples ?? [],
+            })),
+        ];
         return wtOk(ctx, 'list', payload);
     }
     cmdListHuman(ctx, root);
@@ -111,10 +130,14 @@ export async function handleWtHelp(argv: string[], ctx: PortalContext): Promise<
     if (id === 'skip') {
         return skipUsageEnvelope(ctx, 'help skip', EXIT.OK);
     }
+    const ext = findWtExtension(id);
+    if (ext) {
+        return invokeWtExtension(ext, ['--help', ...argv.slice(1)], ctx);
+    }
     const tool = findTool(id);
     if (!tool) {
         wtWriteStderr(ctx, `未知工具: ${id}\n`);
-        wtWriteStderr(ctx, `可用: ${catalogIds().join(', ')}, skip\n`);
+        wtWriteStderr(ctx, `可用: ${[...catalogIds(), ...wtExtensionIds(), 'skip'].join(', ')}\n`);
         return wtErr(ctx, 'help', EXIT.USAGE, { code: 'UNKNOWN_TOOL', message: `未知工具: ${id}` });
     }
     printHelpTool(ctx, tool);
@@ -212,10 +235,14 @@ export async function handleWtRun(argv: string[], ctx: PortalContext): Promise<P
         wtWriteStderr(ctx, 'run 需要 <id>\n');
         return usageEnvelope(ctx, 'run', EXIT.USAGE);
     }
+    const ext = findWtExtension(id);
+    if (ext) {
+        return invokeWtExtension(ext, argv.slice(1), ctx);
+    }
     const tool = findTool(id);
     if (!tool) {
         wtWriteStderr(ctx, `未知工具: ${id}\n`);
-        wtWriteStderr(ctx, `可用: ${catalogIds().join(', ')}\n`);
+        wtWriteStderr(ctx, `可用: ${[...catalogIds(), ...wtExtensionIds()].join(', ')}\n`);
         return wtErr(ctx, 'run', EXIT.USAGE, { code: 'UNKNOWN_TOOL', message: `未知工具: ${id}` });
     }
     const { json, rest } = takePortalFlags(argv.slice(1));
@@ -231,6 +258,10 @@ export async function handleWtDirectRun(
     argv: string[],
     ctx: PortalContext,
 ): Promise<ProcessEnvelope> {
+    const ext = findWtExtension(toolId);
+    if (ext) {
+        return invokeWtExtension(ext, argv, ctx);
+    }
     const tool = findTool(toolId);
     if (!tool) {
         wtWriteStderr(ctx, `未知工具: ${toolId}\n`);
@@ -407,10 +438,15 @@ export async function handleWtInteractive(
     }
 
     process.stdout.write('workspace-tools — 选择工具\n\n');
+    const extensions = wtPortalExtensions();
     WORKSPACE_CATALOG.forEach((t, i) => {
         process.stdout.write(`  ${i + 1}. ${t.id.padEnd(10)} ${t.title} — ${t.summary}\n`);
     });
-    const skipNum = WORKSPACE_CATALOG.length + 1;
+    extensions.forEach((e, j) => {
+        const num = WORKSPACE_CATALOG.length + j + 1;
+        process.stdout.write(`  ${num}. ${e.id.padEnd(10)} ${e.title} — ${e.summary}\n`);
+    });
+    const skipNum = WORKSPACE_CATALOG.length + extensions.length + 1;
     process.stdout.write(
         `  ${skipNum}. ${'skip'.padEnd(10)} 按子命令跳过仓 — ww wt skip list/add/rm/clear\n`,
     );
@@ -429,6 +465,18 @@ export async function handleWtInteractive(
                 return wtOk(ctx, 'menu', { exitCode: code });
             }
             return wtErr(ctx, 'menu', code, { code: 'MENU', message: `exit ${code}` });
+        }
+        const extPick =
+            /^\d+$/.test(pick) &&
+            Number(pick) > WORKSPACE_CATALOG.length &&
+            Number(pick) <= WORKSPACE_CATALOG.length + extensions.length
+                ? extensions[Number(pick) - WORKSPACE_CATALOG.length - 1]
+                : findWtExtension(pick);
+        if (extPick) {
+            const argLine = await question(rl, '附加参数（可空）: ');
+            const args = parseArgLine(argLine);
+            prepareStdinForChildScript(rl);
+            return invokeWtExtension(extPick, args, ctx);
         }
         let tool: WorkspaceTool | undefined;
         if (/^\d+$/.test(pick)) {

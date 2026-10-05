@@ -1,5 +1,15 @@
 export { catalogIds, findTool, WORKSPACE_CATALOG, type WorkspaceTool } from './catalog.js';
 export { workspaceExtraRootStarts } from './config.js';
+export {
+    assertValidWtPortalExtensions,
+    findWtExtension,
+    invokeWtExtension,
+    setWtPortalExtensions,
+    type WtPortalExtension,
+    withPortalJson,
+    wtExtensionIds,
+    wtPortalExtensions,
+} from './extensions.js';
 export { takePortalFlags } from './flags.js';
 export { type RegisterWorkspaceToolsOptions, registerWorkspaceTools } from './register.js';
 export { requireWorkspaceRoot, resolveWorkspaceRoot } from './root.js';
