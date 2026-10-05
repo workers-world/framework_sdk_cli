@@ -79,7 +79,7 @@ export function writeEnvelope(
 ): void {
     const out = opts.stdout ?? process.stdout;
     const err = opts.stderr ?? process.stderr;
-    if (opts.json || !process.stdout.isTTY) {
+    if (opts.json || !(out as NodeJS.WriteStream & { isTTY?: boolean }).isTTY) {
         out.write(`${JSON.stringify(env)}\n`);
         return;
     }

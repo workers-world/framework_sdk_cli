@@ -7,7 +7,7 @@ Workers-World **Agent CLI 基建**（库，无产品 bin）。
 | `envelope/` | 进程信封 + exit 码 |
 | `argv/` | `--confirm` / `--json` / 命名参数 |
 | `http/` | Bearer fetch、WorkerIo→进程信封、env |
-| `portal/` | `registerTool` / `runPortal` |
+| `portal/` | `registerTool` / `runPortal` / `registerPortalVersion`（`ww version` 原语） |
 | `search/` | 门户级 `searchTools` |
 | `workspace/` | `registerWorkspaceTools()`（WW-126，`ww wt`）；可选 `extensions` 注册门户扩展（WW-125，如 `ww wt bench`） |
 

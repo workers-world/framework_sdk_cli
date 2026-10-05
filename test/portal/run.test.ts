@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { okEnvelope } from '../../src/envelope/index.js';
 import {
+    clearPortalVersionRegistration,
     clearRegisteredTools,
     listRegisteredTools,
     registerTool,
@@ -10,6 +11,7 @@ import { searchTools } from '../../src/search/index.js';
 
 afterEach(() => {
     clearRegisteredTools();
+    clearPortalVersionRegistration();
 });
 
 describe('registerTool / search / list', () => {
