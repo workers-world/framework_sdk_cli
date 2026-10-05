@@ -107,7 +107,12 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
     const argv = opts.argv ?? process.argv.slice(2);
     const json = hasJsonFlag(argv) || !process.stdout.isTTY;
     const { positional } = parseNamedArgs(argv);
-    const ctx: PortalContext = { json, portal };
+    const ctx: PortalContext = {
+        json,
+        portal,
+        stdout: opts.stdout,
+        stderr: opts.stderr,
+    };
 
     const head = positional[0];
 
@@ -184,13 +189,26 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         );
     }
 
-    const cmdName = positional[1];
-    if (!cmdName || cmdName === 'help' || cmdName === '--help') {
-        if (!cmdName && tool.defaultHandler) {
-            const result = await tool.defaultHandler(argv.slice(argv.indexOf(head) + 1), {
-                ...ctx,
-                toolId: tool.id,
-            });
+    const toolTail = argv.slice(argv.indexOf(head) + 1);
+    const toolParsed = parseNamedArgs(toolTail);
+    const tCmd = toolParsed.positional[0];
+    const toolHelpFlag =
+        toolTail.some((a) => a === '--help' || a === '-h') ||
+        toolParsed.flags.has('help') ||
+        toolParsed.flags.has('h');
+
+    const toolHelpCmd = tool.commands.find((c) => c.name === 'help');
+
+    if (toolHelpFlag && !tCmd) {
+        if (toolHelpCmd) {
+            const result = await toolHelpCmd.handler([], { ...ctx, toolId: tool.id });
+            return finish(result, opts, json);
+        }
+    }
+
+    if (!tCmd) {
+        if (tool.defaultHandler) {
+            const result = await tool.defaultHandler(toolTail, { ...ctx, toolId: tool.id });
             return finish(result, opts, json);
         }
         const text = helpText(tool.id);
@@ -205,7 +223,16 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         return finish(okEnvelope(`${portal} help ${tool.id}`, { help: text }), opts, json);
     }
 
-    const cmd = tool.commands.find((c) => c.name === cmdName);
+    if (tCmd === 'help' || tCmd === '--help' || tCmd === '-h') {
+        if (toolHelpCmd) {
+            const helpArgs =
+                tCmd === 'help' ? toolParsed.positional.slice(1) : toolParsed.positional.slice(1);
+            const result = await toolHelpCmd.handler(helpArgs, { ...ctx, toolId: tool.id });
+            return finish(result, opts, json);
+        }
+    }
+
+    const cmd = tool.commands.find((c) => c.name === tCmd);
     if (!cmd) {
         const names = tool.commands.map((c) => c.name);
         return finish(
@@ -214,7 +241,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
                 EXIT.USAGE,
                 {
                     code: 'UNKNOWN_COMMAND',
-                    message: `unknown command "${cmdName}"; try: ${names.join(', ')}`,
+                    message: `unknown command "${tCmd}"; try: ${names.join(', ')}`,
                 },
                 { data: { commands: names } },
             ),
@@ -223,8 +250,8 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         );
     }
 
-    const cmdIdx = argv.indexOf(cmdName);
-    const rest = cmdIdx >= 0 ? argv.slice(cmdIdx + 1) : [];
+    const cmdIdx = toolTail.indexOf(tCmd);
+    const rest = cmdIdx >= 0 ? toolTail.slice(cmdIdx + 1) : [];
     const result = await cmd.handler(rest, { ...ctx, toolId: tool.id });
     return finish(result, opts, json);
 }

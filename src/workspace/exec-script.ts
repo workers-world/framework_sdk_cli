@@ -59,23 +59,32 @@ export async function runWorkspaceTool(
         };
     }
 
-    const discard = { write: () => true } as unknown as NodeJS.WritableStream;
-    const out = opts.json ? discard : (opts.io?.stdout ?? process.stdout);
-    const err = opts.json ? discard : (opts.io?.stderr ?? process.stderr);
+    const jsonMode = opts.json;
+    const interactive = !jsonMode && Boolean(process.stdin.isTTY);
+    const portalStdout = opts.io?.stdout ?? process.stdout;
+    const portalStderr = opts.io?.stderr ?? process.stderr;
+
+    /** --json / 非 TTY：脚本输出无着色写到 stderr，stdout 留给信封 */
+    const scriptOutStream = jsonMode ? portalStderr : portalStdout;
+    const scriptErrStream = jsonMode ? portalStderr : portalStderr;
 
     const applied = applySkipArgs(
         workspaceRoot,
         tool,
         args,
-        (line) =>
-            err.write(`${colorizeLogLine(line, shouldColorStream(err, { json: opts.json }))}\n`),
-        (line) =>
-            err.write(`${colorizeLogLine(line, shouldColorStream(err, { json: opts.json }))}\n`),
+        (line) => {
+            const color = shouldColorStream(scriptErrStream, { json: jsonMode });
+            scriptErrStream.write(`${colorizeLogLine(line, color)}\n`);
+        },
+        (line) => {
+            const color = shouldColorStream(scriptErrStream, { json: jsonMode });
+            scriptErrStream.write(`${colorizeLogLine(line, color)}\n`);
+        },
     );
     const runArgs = applied.args;
 
     const env = { ...process.env };
-    if (opts.json) {
+    if (jsonMode) {
         env.NO_COLOR = '1';
     }
 
@@ -94,18 +103,18 @@ export async function runWorkspaceTool(
         cmdArgs = runArgs;
     }
 
-    const colorOut = shouldColorStream(out, { json: opts.json });
-    const colorErr = shouldColorStream(err, { json: opts.json });
+    const colorOut = shouldColorStream(scriptOutStream, { json: jsonMode });
+    const colorErr = shouldColorStream(scriptErrStream, { json: jsonMode });
 
     return new Promise((resolve) => {
+        const outWriter = createLineWriter(scriptOutStream, colorOut);
+        const errWriter = createLineWriter(scriptErrStream, colorErr);
         const child = spawn(cmd, cmdArgs, {
             cwd: workspaceRoot,
             env,
-            stdio: ['ignore', 'pipe', 'pipe'],
+            stdio: [interactive ? 'inherit' : 'ignore', 'pipe', 'pipe'],
             shell: false,
         });
-        const outWriter = createLineWriter(out, colorOut);
-        const errWriter = createLineWriter(err, colorErr);
         child.stdout.on('data', (c: Buffer) => outWriter.write(c.toString('utf8')));
         child.stderr.on('data', (c: Buffer) => errWriter.write(c.toString('utf8')));
         child.on('error', (spawnErr) => {

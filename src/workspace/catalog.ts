@@ -1,4 +1,4 @@
-/** 与 cloudflare_work workspace-tools.mjs CATALOG 对齐（WW-126）。 */
+/** 与 cloudflare_work workspace-tools.mjs CATALOG 对齐（WW-126，invocation → ww wt）。 */
 
 export interface WorkspaceTool {
     id: string;
@@ -18,11 +18,11 @@ export const WORKSPACE_CATALOG: WorkspaceTool[] = [
         script: 'bulk-pull-repos.sh',
         summary: '并发 fetch/merge 各仓当前分支上游（无 upstream 时对齐 origin/<分支>）',
         examples: [
-            'wt pull',
-            'wt pull --dry-run',
-            'wt run pull --jobs 4 --keep-remote',
-            'wt skip --help',
-            'wt skip add pull cloudflare-docs',
+            'ww wt pull',
+            'ww wt pull --dry-run',
+            'ww wt run pull --jobs 4 --keep-remote',
+            'ww wt skip --help',
+            'ww wt skip add pull cloudflare-docs',
         ],
         passthrough: true,
         excludeFlag: '--exclude',
@@ -33,10 +33,10 @@ export const WORKSPACE_CATALOG: WorkspaceTool[] = [
         script: 'bulk-push-repos.sh',
         summary: '并发 push；新轨 merge 前一档 origin/dev_* 后 push -u',
         examples: [
-            'wt push',
-            'wt push --dry-run',
-            'wt run push --jobs 4 --exclude graft',
-            'wt skip add push scripts cpt1',
+            'ww wt push',
+            'ww wt push --dry-run',
+            'ww wt run push --jobs 4 --exclude graft',
+            'ww wt skip add push scripts cpt1',
         ],
         passthrough: true,
         excludeFlag: '--exclude',
@@ -47,10 +47,10 @@ export const WORKSPACE_CATALOG: WorkspaceTool[] = [
         script: 'bump-sdk-consumers.sh',
         summary: '升 framework_sdk_worker（及显式指定的包）；可选 --actions 升 worker-actions pin',
         examples: [
-            'wt bump-sdk',
-            'wt bump-sdk --actions',
-            'wt bump-sdk 0.26.0 --check',
-            'wt skip add bump-sdk mok1',
+            'ww wt bump-sdk',
+            'ww wt bump-sdk --actions',
+            'ww wt bump-sdk 0.26.0 --check',
+            'ww wt skip add bump-sdk mok1',
         ],
         passthrough: true,
         excludeFlag: '--exclude',
@@ -61,9 +61,9 @@ export const WORKSPACE_CATALOG: WorkspaceTool[] = [
         script: 'git-remote-protocol.sh',
         summary: 'ssh | https | cursor | github；默认 dry-run，写入须 --apply',
         examples: [
-            'wt remote cursor',
-            'wt remote cursor --apply --yes',
-            'wt remote github --apply --yes',
+            'ww wt remote cursor',
+            'ww wt remote cursor --apply --yes',
+            'ww wt remote github --apply --yes',
         ],
         passthrough: true,
     },
@@ -72,7 +72,7 @@ export const WORKSPACE_CATALOG: WorkspaceTool[] = [
         title: '各仓行数',
         script: 'cloc-repos.sh',
         summary: 'cloc 扫描 workspace 独立 git 仓并汇总',
-        examples: ['wt cloc', 'wt cloc --csv cloc-repos.csv'],
+        examples: ['ww wt cloc', 'ww wt cloc --csv cloc-repos.csv'],
         passthrough: true,
         excludeFlag: '--exclude',
     },

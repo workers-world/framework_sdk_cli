@@ -6,6 +6,17 @@ const GREEN = '\x1b[32m';
 const GRAY = '\x1b[90m';
 const RESET = '\x1b[0m';
 
+function forceColorDecision(): boolean | undefined {
+    const fc = process.env.FORCE_COLOR;
+    if (fc == null || fc === '') {
+        return undefined;
+    }
+    if (fc === '0' || fc === 'false') {
+        return false;
+    }
+    return true;
+}
+
 export function shouldColorStream(
     stream: NodeJS.WritableStream,
     opts?: { json?: boolean; forceColor?: boolean },
@@ -16,7 +27,11 @@ export function shouldColorStream(
     if (process.env.NO_COLOR != null && process.env.NO_COLOR !== '') {
         return false;
     }
-    if (opts?.forceColor || process.env.FORCE_COLOR != null) {
+    const forced = opts?.forceColor ?? forceColorDecision();
+    if (forced === false) {
+        return false;
+    }
+    if (forced === true) {
         return true;
     }
     const tty = (stream as NodeJS.WriteStream & { isTTY?: boolean }).isTTY;
@@ -26,7 +41,23 @@ export function shouldColorStream(
 function levelForLine(line: string): 'error' | 'warn' | 'ok' | 'debug' | 'info' {
     const t = line.trimStart();
     const upper = t.toUpperCase();
-    if (/\bFAIL\b/.test(upper) || /\bERROR\b/.test(upper) || upper.startsWith('ERROR:')) {
+
+    if (t.startsWith('错误:')) {
+        return 'error';
+    }
+
+    if (/^summary:/i.test(t)) {
+        const failMatch = t.match(/\bFAIL\s+(\d+)/i);
+        if (failMatch && Number(failMatch[1]) > 0) {
+            return 'error';
+        }
+        return 'info';
+    }
+
+    if (/^error:/i.test(t) || upper.startsWith('ERROR:')) {
+        return 'error';
+    }
+    if (/\bFAIL\b/.test(upper) || /\bERROR\b/.test(upper)) {
         return 'error';
     }
     if (/\bSKIP\b/.test(upper) || /\bWARN\b/.test(upper) || upper.startsWith('WARN:')) {
@@ -38,7 +69,7 @@ function levelForLine(line: string): 'error' | 'warn' | 'ok' | 'debug' | 'info' 
     if (/\bDEBUG\b/.test(upper) || upper.startsWith('debug:')) {
         return 'debug';
     }
-    if (t.includes('未知工具')) {
+    if (t.includes('未知工具') || t.startsWith('未知选择')) {
         return 'error';
     }
     return 'info';

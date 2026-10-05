@@ -20,6 +20,7 @@ import {
 } from './skip-file.js';
 import { skipUsageText, usageText } from './usage.js';
 import { runJsonData, wtErr, wtOk } from './wt-envelope.js';
+import { wtWriteStderr, wtWriteStdout } from './wt-io.js';
 
 function rootOpts() {
     return { extraStarts: workspaceExtraRootStarts() };
@@ -38,7 +39,7 @@ function scriptPath(root: string, tool: WorkspaceTool): string {
     return join(root, tool.script);
 }
 
-function printHelpTool(tool: WorkspaceTool): void {
+function printHelpTool(ctx: PortalContext, tool: WorkspaceTool): void {
     const lines = [
         `${tool.id} — ${tool.title}`,
         tool.summary,
@@ -46,13 +47,13 @@ function printHelpTool(tool: WorkspaceTool): void {
         'examples:',
         ...tool.examples.map((ex) => `  ${ex}`),
     ];
-    process.stdout.write(`${lines.join('\n')}\n`);
+    wtWriteStdout(ctx, `${lines.join('\n')}\n`);
 }
 
 function usageEnvelope(ctx: PortalContext, sub: string, exitCode: number): ProcessEnvelope {
     const root = resolveWorkspaceRoot(rootOpts());
     const text = usageText(root ? skipFilePath(root) : skipFilePath('.'));
-    process.stdout.write(`${text}\n`);
+    wtWriteStdout(ctx, `${text}\n`);
     if (exitCode === 0) {
         return wtOk(ctx, sub, { help: text }, EXIT.OK);
     }
@@ -62,21 +63,21 @@ function usageEnvelope(ctx: PortalContext, sub: string, exitCode: number): Proce
 function skipUsageEnvelope(ctx: PortalContext, sub: string, exitCode: number): ProcessEnvelope {
     const root = resolveWorkspaceRoot(rootOpts());
     const text = skipUsageText(root ? skipFilePath(root) : skipFilePath('.'));
-    process.stdout.write(`${text}\n`);
+    wtWriteStdout(ctx, `${text}\n`);
     if (exitCode === 0) {
         return wtOk(ctx, sub, { help: text }, EXIT.OK);
     }
     return wtErr(ctx, sub, EXIT.USAGE, { code: 'USAGE', message: text }, { help: text });
 }
 
-function cmdListHuman(root: string): void {
-    process.stdout.write('workspace-tools catalog\n\n');
+function cmdListHuman(ctx: PortalContext, root: string): void {
+    wtWriteStdout(ctx, 'workspace-tools catalog\n\n');
     for (const t of WORKSPACE_CATALOG) {
         const missing = existsSync(scriptPath(root, t)) ? '' : '  [MISSING]';
-        process.stdout.write(`  ${t.id.padEnd(12)} ${t.title}${missing}\n`);
-        process.stdout.write(`               ${t.summary}\n`);
+        wtWriteStdout(ctx, `  ${t.id.padEnd(12)} ${t.title}${missing}\n`);
+        wtWriteStdout(ctx, `               ${t.summary}\n`);
     }
-    process.stdout.write('\nrun: wt <id> | wt run <id> [--] [args...]\n');
+    wtWriteStdout(ctx, '\nrun: ww wt <id> | ww wt run <id> [--] [args...]\n');
 }
 
 export async function handleWtList(argv: string[], ctx: PortalContext): Promise<ProcessEnvelope> {
@@ -96,7 +97,7 @@ export async function handleWtList(argv: string[], ctx: PortalContext): Promise<
         }));
         return wtOk(ctx, 'list', payload);
     }
-    cmdListHuman(root);
+    cmdListHuman(ctx, root);
     return wtOk(ctx, 'list', { printed: true });
 }
 
@@ -110,12 +111,12 @@ export async function handleWtHelp(argv: string[], ctx: PortalContext): Promise<
     }
     const tool = findTool(id);
     if (!tool) {
-        process.stderr.write(`未知工具: ${id}\n`);
-        process.stderr.write(`可用: ${catalogIds().join(', ')}, skip\n`);
+        wtWriteStderr(ctx, `未知工具: ${id}\n`);
+        wtWriteStderr(ctx, `可用: ${catalogIds().join(', ')}, skip\n`);
         return wtErr(ctx, 'help', EXIT.USAGE, { code: 'UNKNOWN_TOOL', message: `未知工具: ${id}` });
     }
-    printHelpTool(tool);
-    return wtOk(ctx, `help ${id}`, { id: tool.id });
+    printHelpTool(ctx, tool);
+    return wtOk(ctx, `help ${id}`, { id: tool.id, help: `${tool.id} — ${tool.title}` });
 }
 
 async function executeTool(
@@ -132,7 +133,7 @@ async function executeTool(
     const root = rootRes;
 
     if (!existsSync(scriptPath(root, tool))) {
-        process.stderr.write(`error: 脚本不存在: ${tool.script}\n`);
+        wtWriteStderr(ctx, `error: 脚本不存在: ${tool.script}\n`);
         const data = runJsonData(tool.id, 1, args, []);
         if (portalJson || ctx.json) {
             return wtErr(
@@ -152,9 +153,12 @@ async function executeTool(
         );
     }
 
-    const result = await runWorkspaceTool(tool, args, root, { json: portalJson || ctx.json });
+    const result = await runWorkspaceTool(tool, args, root, {
+        json: portalJson || ctx.json,
+        io: { stdout: ctx.stdout, stderr: ctx.stderr },
+    });
     if (result.spawnError) {
-        process.stderr.write(`error: 无法启动 ${tool.script}: ${result.spawnError}\n`);
+        wtWriteStderr(ctx, `error: 无法启动 ${tool.script}: ${result.spawnError}\n`);
         const data = runJsonData(tool.id, 127, result.argv, result.skip, {
             error: result.spawnError,
         });
@@ -189,8 +193,8 @@ function validateRemote(
     sub: string,
 ): ProcessEnvelope | null {
     if (tool.id === 'remote' && rest.length === 0) {
-        process.stderr.write('remote 需要位置参数：ssh | https | cursor | github\n');
-        printHelpTool(tool);
+        wtWriteStderr(ctx, 'remote 需要位置参数：ssh | https | cursor | github\n');
+        printHelpTool(ctx, tool);
         return wtErr(ctx, sub, EXIT.USAGE, {
             code: 'USAGE',
             message: 'remote 需要位置参数：ssh | https | cursor | github',
@@ -202,13 +206,13 @@ function validateRemote(
 export async function handleWtRun(argv: string[], ctx: PortalContext): Promise<ProcessEnvelope> {
     const id = argv[0];
     if (!id) {
-        process.stderr.write('run 需要 <id>\n');
+        wtWriteStderr(ctx, 'run 需要 <id>\n');
         return usageEnvelope(ctx, 'run', EXIT.USAGE);
     }
     const tool = findTool(id);
     if (!tool) {
-        process.stderr.write(`未知工具: ${id}\n`);
-        process.stderr.write(`可用: ${catalogIds().join(', ')}\n`);
+        wtWriteStderr(ctx, `未知工具: ${id}\n`);
+        wtWriteStderr(ctx, `可用: ${catalogIds().join(', ')}\n`);
         return wtErr(ctx, 'run', EXIT.USAGE, { code: 'UNKNOWN_TOOL', message: `未知工具: ${id}` });
     }
     const { json, rest } = takePortalFlags(argv.slice(1));
@@ -226,7 +230,7 @@ export async function handleWtDirectRun(
 ): Promise<ProcessEnvelope> {
     const tool = findTool(toolId);
     if (!tool) {
-        process.stderr.write(`未知工具: ${toolId}\n`);
+        wtWriteStderr(ctx, `未知工具: ${toolId}\n`);
         return wtErr(ctx, toolId, EXIT.USAGE, {
             code: 'UNKNOWN_TOOL',
             message: `未知工具: ${toolId}`,
@@ -253,7 +257,7 @@ export async function handleWtSkip(argv: string[], ctx: PortalContext): Promise<
         data = loadSkipFile(root);
     } catch (e) {
         if (e instanceof SkipFileParseError) {
-            process.stderr.write(`${e.message}\n`);
+            wtWriteStderr(ctx, `${e.message}\n`);
             return wtErr(ctx, 'skip', EXIT.USAGE, { code: 'SKIP_FILE', message: e.message });
         }
         throw e;
@@ -271,7 +275,7 @@ export async function handleWtSkip(argv: string[], ctx: PortalContext): Promise<
         const id = rest[1];
         if (id) {
             if (!findTool(id)) {
-                process.stderr.write(`未知工具: ${id}\n`);
+                wtWriteStderr(ctx, `未知工具: ${id}\n`);
                 return wtErr(ctx, 'skip list', EXIT.USAGE, {
                     code: 'UNKNOWN_TOOL',
                     message: `未知工具: ${id}`,
@@ -282,9 +286,9 @@ export async function handleWtSkip(argv: string[], ctx: PortalContext): Promise<
                 return wtOk(ctx, 'skip list', { id, skip: names });
             }
             if (names.length === 0) {
-                process.stdout.write(`${id}: （空）\n`);
+                wtWriteStdout(ctx, `${id}: （空）\n`);
             } else {
-                process.stdout.write(`${id}: ${names.join(' ')}\n`);
+                wtWriteStdout(ctx, `${id}: ${names.join(' ')}\n`);
             }
             return wtOk(ctx, 'skip list', { id, skip: names });
         }
@@ -298,12 +302,12 @@ export async function handleWtSkip(argv: string[], ctx: PortalContext): Promise<
                 continue;
             }
             any = true;
-            process.stdout.write(`${id2}: ${names.join(' ')}\n`);
+            wtWriteStdout(ctx, `${id2}: ${names.join(' ')}\n`);
         }
         if (!any) {
-            process.stdout.write('跳过名单为空。例: wt skip add push scripts cpt1\n');
+            wtWriteStdout(ctx, '跳过名单为空。例: ww wt skip add push scripts cpt1\n');
         }
-        process.stdout.write(`文件: ${skipPath}\n`);
+        wtWriteStdout(ctx, `文件: ${skipPath}\n`);
         return wtOk(ctx, 'skip list', data);
     }
 
@@ -313,7 +317,7 @@ export async function handleWtSkip(argv: string[], ctx: PortalContext): Promise<
             return skipUsageEnvelope(ctx, 'skip', EXIT.USAGE);
         }
         if (!findTool(id)) {
-            process.stderr.write(`未知工具: ${id}\n`);
+            wtWriteStderr(ctx, `未知工具: ${id}\n`);
             return wtErr(ctx, 'skip', EXIT.USAGE, {
                 code: 'UNKNOWN_TOOL',
                 message: `未知工具: ${id}`,
@@ -348,11 +352,11 @@ export async function handleWtSkip(argv: string[], ctx: PortalContext): Promise<
         if (portalJson) {
             return wtOk(ctx, `skip ${sub}`, { ok: true, id, skip: names });
         }
-        process.stdout.write(names.length ? `${id}: ${names.join(' ')}\n` : `${id}: （空）\n`);
+        wtWriteStdout(ctx, names.length ? `${id}: ${names.join(' ')}\n` : `${id}: （空）\n`);
         return wtOk(ctx, `skip ${sub}`, { ok: true, id, skip: names });
     }
 
-    process.stderr.write(`未知 skip 子命令: ${sub}\n`);
+    wtWriteStderr(ctx, `未知 skip 子命令: ${sub}\n`);
     return skipUsageEnvelope(ctx, 'skip', EXIT.USAGE);
 }
 
@@ -391,11 +395,11 @@ export async function handleWtInteractive(
     ctx: PortalContext,
 ): Promise<ProcessEnvelope> {
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
-        process.stderr.write('非 TTY：请用 list / run / help（避免交互挂起）\n');
+        wtWriteStderr(ctx, '非 TTY：请用 list / run / help（避免交互挂起）\n');
         return usageEnvelope(ctx, '', EXIT.USAGE);
     }
     if (ctx.json) {
-        process.stderr.write('非 TTY：请用 list / run / help（避免交互挂起）\n');
+        wtWriteStderr(ctx, '非 TTY：请用 list / run / help（避免交互挂起）\n');
         return usageEnvelope(ctx, '', EXIT.USAGE);
     }
 
@@ -405,7 +409,7 @@ export async function handleWtInteractive(
     });
     const skipNum = WORKSPACE_CATALOG.length + 1;
     process.stdout.write(
-        `  ${skipNum}. ${'skip'.padEnd(10)} 按子命令跳过仓 — wt skip list/add/rm/clear\n`,
+        `  ${skipNum}. ${'skip'.padEnd(10)} 按子命令跳过仓 — ww wt skip list/add/rm/clear\n`,
     );
     process.stdout.write('  q. 退出\n\n');
 
@@ -430,17 +434,17 @@ export async function handleWtInteractive(
             tool = findTool(pick);
         }
         if (!tool) {
-            process.stderr.write('未知选择\n');
+            wtWriteStderr(ctx, '未知选择\n');
             return wtErr(ctx, 'menu', EXIT.USAGE, { code: 'UNKNOWN_CHOICE', message: '未知选择' });
         }
-        printHelpTool(tool);
+        printHelpTool(ctx, tool);
         const argLine = await question(rl, '附加参数（可空；remote 须带 mode 如 cursor）: ');
         const args = parseArgLine(argLine);
         if (tool.id === 'remote' && args.length === 0) {
-            process.stderr.write('remote 需要位置参数：ssh | https | cursor | github\n');
-            process.stderr.write('examples:\n');
+            wtWriteStderr(ctx, 'remote 需要位置参数：ssh | https | cursor | github\n');
+            wtWriteStderr(ctx, 'examples:\n');
             for (const ex of tool.examples) {
-                process.stderr.write(`  ${ex}\n`);
+                wtWriteStderr(ctx, `  ${ex}\n`);
             }
             return wtErr(ctx, 'menu', EXIT.USAGE, {
                 code: 'USAGE',

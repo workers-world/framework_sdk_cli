@@ -11,6 +11,9 @@ export interface PortalContext {
     portal: string;
     /** 当前业务 id，如 pgreq */
     toolId?: string;
+    /** runPortal 注入（测试 / 嵌入） */
+    stdout?: NodeJS.WritableStream;
+    stderr?: NodeJS.WritableStream;
 }
 
 export interface ToolCommand {

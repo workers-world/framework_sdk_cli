@@ -1,7 +1,7 @@
 import { EXIT, errorEnvelope, okEnvelope, type ProcessEnvelope } from '../envelope/index.js';
 import type { PortalContext } from '../portal/types.js';
 
-const WT_META = { suppress_tty_status: true } as const;
+const WT_META = { suppress_tty_status: true, retryable: false } as const;
 
 export function wtCommand(ctx: PortalContext, sub: string): string {
     return `${ctx.portal} wt${sub ? ` ${sub}` : ''}`;

@@ -4,7 +4,9 @@ import { okEnvelope, writeEnvelope } from '../../src/envelope/index.js';
 describe('writeEnvelope TTY colors (WW-126)', () => {
     it('colors ok line on stderr when TTY', () => {
         const prevNoColor = process.env.NO_COLOR;
+        const prevForce = process.env.FORCE_COLOR;
         delete process.env.NO_COLOR;
+        delete process.env.FORCE_COLOR;
         const stderr: string[] = [];
         const errStream = {
             isTTY: true,
@@ -28,6 +30,11 @@ describe('writeEnvelope TTY colors (WW-126)', () => {
                 delete process.env.NO_COLOR;
             } else {
                 process.env.NO_COLOR = prevNoColor;
+            }
+            if (prevForce === undefined) {
+                delete process.env.FORCE_COLOR;
+            } else {
+                process.env.FORCE_COLOR = prevForce;
             }
         }
         const esc = String.fromCharCode(27);
