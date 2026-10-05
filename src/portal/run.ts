@@ -15,6 +15,7 @@ import {
     registerTool,
 } from './registry.js';
 import type { PortalContext } from './types.js';
+import { isPortalVersionArgv, runPortalVersionCommand } from './version-info.js';
 
 export { clearRegisteredTools, listRegisteredTools, registerTool };
 
@@ -27,6 +28,7 @@ function helpText(toolId?: string): string {
         agentNotice(),
         '',
         'Usage:',
+        '  ww version [--json]  (aliases: ww --version, ww -v)',
         '  ww list [--json]',
         '  ww help [tool]',
         '  ww search "<query>" [--json]',
@@ -105,7 +107,9 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
     ensureDotEnvLoaded();
     const portal = opts.portal ?? 'ww';
     const argv = opts.argv ?? process.argv.slice(2);
-    const json = hasJsonFlag(argv) || !process.stdout.isTTY;
+    const stdoutStream = opts.stdout ?? process.stdout;
+    const json =
+        hasJsonFlag(argv) || !(stdoutStream as NodeJS.WriteStream & { isTTY?: boolean }).isTTY;
     const { positional } = parseNamedArgs(argv);
     const ctx: PortalContext = {
         json,
@@ -115,6 +119,11 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
     };
 
     const head = positional[0];
+
+    if (isPortalVersionArgv(argv) || isPortalVersionArgv(positional)) {
+        const result = await runPortalVersionCommand(portal, ctx);
+        return finish(result, opts, json);
+    }
 
     if (!head || head === 'help' || head === '--help' || head === '-h') {
         const toolId = head === 'help' ? positional[1] : undefined;
