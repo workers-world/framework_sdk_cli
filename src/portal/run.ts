@@ -15,6 +15,7 @@ import {
     registerTool,
 } from './registry.js';
 import type { PortalContext } from './types.js';
+import { isPortalVersionArgv, runPortalVersionCommand } from './version-info.js';
 
 export { clearRegisteredTools, listRegisteredTools, registerTool };
 
@@ -27,6 +28,7 @@ function helpText(toolId?: string): string {
         agentNotice(),
         '',
         'Usage:',
+        '  ww version [--json]  (aliases: ww --version, ww -v)',
         '  ww list [--json]',
         '  ww help [tool]',
         '  ww search "<query>" [--json]',
@@ -105,11 +107,23 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
     ensureDotEnvLoaded();
     const portal = opts.portal ?? 'ww';
     const argv = opts.argv ?? process.argv.slice(2);
-    const json = hasJsonFlag(argv) || !process.stdout.isTTY;
+    const stdoutStream = opts.stdout ?? process.stdout;
+    const json =
+        hasJsonFlag(argv) || !(stdoutStream as NodeJS.WriteStream & { isTTY?: boolean }).isTTY;
     const { positional } = parseNamedArgs(argv);
-    const ctx: PortalContext = { json, portal };
+    const ctx: PortalContext = {
+        json,
+        portal,
+        stdout: opts.stdout,
+        stderr: opts.stderr,
+    };
 
     const head = positional[0];
+
+    if (isPortalVersionArgv(argv) || isPortalVersionArgv(positional)) {
+        const result = await runPortalVersionCommand(portal, ctx);
+        return finish(result, opts, json);
+    }
 
     if (!head || head === 'help' || head === '--help' || head === '-h') {
         const toolId = head === 'help' ? positional[1] : undefined;
@@ -184,8 +198,18 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         );
     }
 
-    const cmdName = positional[1];
-    if (!cmdName || cmdName === 'help' || cmdName === '--help') {
+    const toolTail = argv.slice(argv.indexOf(head) + 1);
+    const toolParsed = parseNamedArgs(toolTail);
+    const tCmd = toolParsed.positional[0];
+    const toolHelpFlag =
+        toolTail.some((a) => a === '--help' || a === '-h') ||
+        toolParsed.flags.has('help') ||
+        toolParsed.flags.has('h');
+
+    const toolHelpCmd = tool.commands.find((c) => c.name === 'help');
+    const wtPortalHelp = tool.id === 'wt' && toolHelpCmd;
+
+    const finishGenericToolHelp = (): ProcessEnvelope => {
         const text = helpText(tool.id);
         if (!json) {
             (opts.stderr ?? process.stderr).write(`${text}\n`);
@@ -196,9 +220,31 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
             return result;
         }
         return finish(okEnvelope(`${portal} help ${tool.id}`, { help: text }), opts, json);
+    };
+
+    if (toolHelpFlag && !tCmd && wtPortalHelp) {
+        const result = await toolHelpCmd.handler([], { ...ctx, toolId: tool.id });
+        return finish(result, opts, json);
     }
 
-    const cmd = tool.commands.find((c) => c.name === cmdName);
+    if (!tCmd) {
+        if (tool.defaultHandler && !toolHelpFlag) {
+            const result = await tool.defaultHandler(toolTail, { ...ctx, toolId: tool.id });
+            return finish(result, opts, json);
+        }
+        return finishGenericToolHelp();
+    }
+
+    if (tCmd === 'help' || tCmd === '--help' || tCmd === '-h') {
+        if (wtPortalHelp) {
+            const helpArgs = tCmd === 'help' ? toolParsed.positional.slice(1) : [];
+            const result = await toolHelpCmd.handler(helpArgs, { ...ctx, toolId: tool.id });
+            return finish(result, opts, json);
+        }
+        return finishGenericToolHelp();
+    }
+
+    const cmd = tool.commands.find((c) => c.name === tCmd);
     if (!cmd) {
         const names = tool.commands.map((c) => c.name);
         return finish(
@@ -207,7 +253,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
                 EXIT.USAGE,
                 {
                     code: 'UNKNOWN_COMMAND',
-                    message: `unknown command "${cmdName}"; try: ${names.join(', ')}`,
+                    message: `unknown command "${tCmd}"; try: ${names.join(', ')}`,
                 },
                 { data: { commands: names } },
             ),
@@ -216,8 +262,8 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         );
     }
 
-    const cmdIdx = argv.indexOf(cmdName);
-    const rest = cmdIdx >= 0 ? argv.slice(cmdIdx + 1) : [];
+    const cmdIdx = toolTail.indexOf(tCmd);
+    const rest = cmdIdx >= 0 ? toolTail.slice(cmdIdx + 1) : [];
     const result = await cmd.handler(rest, { ...ctx, toolId: tool.id });
     return finish(result, opts, json);
 }

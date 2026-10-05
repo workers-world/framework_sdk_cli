@@ -13,3 +13,4 @@ export * from './envelope/index.js';
 export * from './http/index.js';
 export * from './portal/index.js';
 export * from './search/index.js';
+export * from './workspace/index.js';

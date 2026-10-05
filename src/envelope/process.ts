@@ -1,3 +1,4 @@
+import { colorizeStatusLine } from '../cli/color.js';
 import {
     EXIT,
     type ExitCode,
@@ -78,20 +79,27 @@ export function writeEnvelope(
 ): void {
     const out = opts.stdout ?? process.stdout;
     const err = opts.stderr ?? process.stderr;
-    if (opts.json || !process.stdout.isTTY) {
+    if (opts.json || !(out as NodeJS.WriteStream & { isTTY?: boolean }).isTTY) {
         out.write(`${JSON.stringify(env)}\n`);
         return;
     }
+    if (env.meta.suppress_tty_status) {
+        return;
+    }
     if (env.ok) {
-        err.write(`${env.meta.command}: ok\n`);
+        const okLine = colorizeStatusLine(`${env.meta.command}: ok`, err, false);
+        err.write(`${okLine}\n`);
         if (env.data != null) {
             out.write(`${JSON.stringify(env.data, null, 2)}\n`);
         }
         return;
     }
-    err.write(
-        `${env.meta.command}: ${env.error?.code ?? 'ERROR'}: ${env.error?.message ?? 'failed'}\n`,
+    const errLine = colorizeStatusLine(
+        `${env.meta.command}: ${env.error?.code ?? 'ERROR'}: ${env.error?.message ?? 'failed'}`,
+        err,
+        false,
     );
+    err.write(`${errLine}\n`);
     if (env.data != null) {
         out.write(`${JSON.stringify(env.data, null, 2)}\n`);
     }
