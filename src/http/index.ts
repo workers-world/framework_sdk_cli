@@ -5,7 +5,12 @@ export {
     parseWorkerIo,
     type WorkerIoLike,
 } from './bearer.js';
-export { requireEnv, resolveDeployTrackerBase, resolveRulesAdminToken } from './env.js';
+export {
+    requireEnv,
+    resolveDeployTrackerBase,
+    resolveMachineToken,
+    resolveRulesAdminToken,
+} from './env.js';
 export {
     ensureDotEnvLoaded,
     type LoadDotEnvOptions,
