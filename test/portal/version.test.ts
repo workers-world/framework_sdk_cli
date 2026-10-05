@@ -58,27 +58,31 @@ describe('portal version (WW-128)', () => {
         }
     });
 
+    function writeInstalledCli(version: string, opts?: { git?: boolean }) {
+        const dir = join(root, 'node_modules', 'framework_sdk_cli');
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(
+            join(dir, 'package.json'),
+            JSON.stringify({ name: 'framework_sdk_cli', version }, null, 2),
+        );
+        if (opts?.git) {
+            initGit(dir);
+        }
+    }
+
     function setupPortal() {
         root = mkdtempSync(join(tmpdir(), 'ww-version-'));
         const wwHash = initGit(root);
-        writeFileSync(
-            join(root, 'package.json'),
-            JSON.stringify({ name: 'ww', version: '0.2.3', dependencies: {} }, null, 2),
-        );
-        const sdkRoot = join(root, 'framework_sdk_cli');
-        mkdirSync(sdkRoot, { recursive: true });
-        const sdkHash = initGit(sdkRoot);
-        writeFileSync(
-            join(sdkRoot, 'package.json'),
-            JSON.stringify({ name: 'framework_sdk_cli', version: '0.1.0' }, null, 2),
-        );
+        writeInstalledCli('0.0.9-registry');
         writeFileSync(
             join(root, 'package.json'),
             JSON.stringify(
                 {
                     name: 'ww',
                     version: '0.2.3',
-                    dependencies: { framework_sdk_cli: 'file:./framework_sdk_cli' },
+                    dependencies: {
+                        framework_sdk_cli: 'npm:@workers-world/framework_sdk_cli@0.2.0',
+                    },
                 },
                 null,
                 2,
@@ -86,35 +90,39 @@ describe('portal version (WW-128)', () => {
         );
         registerPortalVersion({
             portalPackageRoot: root,
-            dependencies: [
-                {
-                    dependencyName: 'framework_sdk_cli',
-                    label: 'framework_sdk_cli',
-                    gitRoot: sdkRoot,
-                },
-            ],
+            dependencies: [{ dependencyName: 'framework_sdk_cli', label: 'framework_sdk_cli' }],
         });
-        return { wwHash, sdkHash };
+        return { wwHash };
     }
 
-    it('collectPortalVersionInfo reads package.json versions and git hashes', () => {
-        const { wwHash, sdkHash } = setupPortal();
-        const info = collectPortalVersionInfo({ portalPackageRoot: root, dependencies: [] });
+    it('collectPortalVersionInfo reads installed node_modules, not sibling', () => {
+        const { wwHash } = setupPortal();
+        const info = collectPortalVersionInfo({
+            portalPackageRoot: root,
+            dependencies: [{ dependencyName: 'framework_sdk_cli', label: 'framework_sdk_cli' }],
+        });
         expect(info.version).toBe('0.2.3');
         expect(info.gitShortHash).toBe(wwHash);
-        const full = collectPortalVersionInfo({
+        expect(info.dependencies[0]?.version).toBe('0.0.9-registry');
+        expect(info.dependencies[0]?.gitShortHash).toBeUndefined();
+        expect(info.dependencies[0]?.installPath).toContain('node_modules/framework_sdk_cli');
+    });
+
+    it('git hash only when installed path is a git repo root', () => {
+        setupPortal();
+        rmSync(join(root, 'node_modules', 'framework_sdk_cli'), { recursive: true, force: true });
+        writeInstalledCli('0.1.5', { git: true });
+        const sdkHash = execFileSync(
+            'git',
+            ['-C', join(root, 'node_modules', 'framework_sdk_cli'), 'rev-parse', '--short', 'HEAD'],
+            { encoding: 'utf8' },
+        ).trim();
+        const info = collectPortalVersionInfo({
             portalPackageRoot: root,
-            dependencies: [
-                {
-                    dependencyName: 'framework_sdk_cli',
-                    label: 'framework_sdk_cli',
-                    gitRoot: join(root, 'framework_sdk_cli'),
-                },
-            ],
+            dependencies: [{ dependencyName: 'framework_sdk_cli', label: 'framework_sdk_cli' }],
         });
-        expect(full.dependencies[0]?.version).toBe('0.1.0');
-        expect(full.dependencies[0]?.gitShortHash).toBe(sdkHash);
-        expect(full.dependencies[0]?.installPath).toBeTruthy();
+        expect(info.dependencies[0]?.version).toBe('0.1.5');
+        expect(info.dependencies[0]?.gitShortHash).toBe(sdkHash);
     });
 
     it('terminal output omits installPath', () => {
@@ -125,7 +133,7 @@ describe('portal version (WW-128)', () => {
         });
         const text = formatPortalVersionTerminal(info);
         expect(text).toContain('ww 0.2.3');
-        expect(text).toContain('framework_sdk_cli 0.1.0');
+        expect(text).toContain('framework_sdk_cli 0.0.9-registry');
         expect(text).toContain(`node ${process.versions.node}`);
         expect(text).not.toContain('installPath');
         expect(text).not.toContain(root);
@@ -146,12 +154,46 @@ describe('portal version (WW-128)', () => {
         expect(io.stderrChunks.join('')).toBe('');
         const esc = String.fromCharCode(27);
         expect(io.stdoutChunks.join('').includes(`${esc}[`)).toBe(false);
-        const data = result.data as {
-            installPath?: string;
-            dependencies: Array<{ installPath?: string }>;
-        };
-        expect(data.installPath).toBeTruthy();
-        expect(data.dependencies[0]?.installPath).toBeTruthy();
+    });
+
+    it('TTY prints human lines once on stdout without status or JSON dump', async () => {
+        setupPortal();
+        const stdout: string[] = [];
+        const stderr: string[] = [];
+        const result = await runPortal({
+            portal: 'ww',
+            argv: ['version'],
+            noExit: true,
+            stdout: {
+                isTTY: true,
+                write(s: string) {
+                    stdout.push(s);
+                    return true;
+                },
+            } as unknown as NodeJS.WritableStream,
+            stderr: {
+                isTTY: true,
+                write(s: string) {
+                    stderr.push(s);
+                    return true;
+                },
+            } as unknown as NodeJS.WritableStream,
+        });
+        expect(result.ok).toBe(true);
+        expect(result.meta.suppress_tty_status).toBe(true);
+        expect(stdout.join('')).toBe(
+            formatPortalVersionTerminal(
+                collectPortalVersionInfo({
+                    portalPackageRoot: root,
+                    dependencies: [
+                        { dependencyName: 'framework_sdk_cli', label: 'framework_sdk_cli' },
+                    ],
+                }),
+            ),
+        );
+        expect(stderr.join('')).toBe('');
+        expect(stdout.join('').includes(': ok')).toBe(false);
+        expect(stdout.join('').trim().startsWith('{')).toBe(false);
     });
 
     it('aliases --version and -v match ww version', async () => {

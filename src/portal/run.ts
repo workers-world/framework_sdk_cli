@@ -107,7 +107,9 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
     ensureDotEnvLoaded();
     const portal = opts.portal ?? 'ww';
     const argv = opts.argv ?? process.argv.slice(2);
-    const json = hasJsonFlag(argv) || !process.stdout.isTTY;
+    const stdoutStream = opts.stdout ?? process.stdout;
+    const json =
+        hasJsonFlag(argv) || !(stdoutStream as NodeJS.WriteStream & { isTTY?: boolean }).isTTY;
     const { positional } = parseNamedArgs(argv);
     const ctx: PortalContext = {
         json,

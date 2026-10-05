@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,8 +12,6 @@ export interface VersionDependencySpec {
     dependencyName: string;
     /** 终端 / JSON 展示名 */
     label: string;
-    /** 本地 git 仓根（file: 或 sibling 开发）；省略则只解析 node_modules */
-    gitRoot?: string;
 }
 
 export interface PortalVersionRegistration {
@@ -67,10 +65,7 @@ function resolveRealPath(p: string): string {
     }
 }
 
-function gitShortHash(repoRoot: string | undefined): string | null {
-    if (!repoRoot) {
-        return null;
-    }
+function gitShortHash(repoRoot: string): string | null {
     try {
         const out = execFileSync('git', ['-C', repoRoot, 'rev-parse', '--short', 'HEAD'], {
             encoding: 'utf8',
@@ -82,49 +77,52 @@ function gitShortHash(repoRoot: string | undefined): string | null {
     }
 }
 
-function resolveDependencyRoot(
-    portalPackageRoot: string,
-    dependencyName: string,
-    gitRootHint?: string,
-): { installPath: string; gitRoot: string | null } | null {
-    const pkgPath = join(portalPackageRoot, 'package.json');
-    let depSpec: string | undefined;
+/** 仅当 installPath 本身是 git 仓根时才返回 hash */
+function gitShortHashIfRepoRoot(installPath: string): string | null {
     try {
-        const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as {
-            dependencies?: Record<string, string>;
-        };
-        depSpec = pkg.dependencies?.[dependencyName];
-    } catch {
-        depSpec = undefined;
-    }
-
-    if (typeof depSpec === 'string' && depSpec.startsWith('file:')) {
-        const rel = depSpec.slice('file:'.length);
-        const abs = join(portalPackageRoot, rel);
-        const installPath = resolveRealPath(abs);
-        const gitRoot =
-            gitRootHint && gitShortHash(gitRootHint)
-                ? gitRootHint
-                : gitShortHash(installPath)
-                  ? installPath
-                  : null;
-        return { installPath, gitRoot };
-    }
-
-    try {
-        const req = createRequire(join(portalPackageRoot, 'package.json'));
-        const resolved = req.resolve(`${dependencyName}/package.json`);
-        const installPath = resolveRealPath(dirname(resolved));
-        const gitFromHint = gitRootHint && gitShortHash(gitRootHint) ? gitRootHint : null;
-        const gitFromInstall = gitShortHash(installPath) ? installPath : null;
-        return { installPath, gitRoot: gitFromHint ?? gitFromInstall };
-    } catch {
-        if (gitRootHint) {
-            const installPath = resolveRealPath(gitRootHint);
-            return { installPath, gitRoot: gitShortHash(gitRootHint) ? gitRootHint : null };
+        const top = execFileSync('git', ['-C', installPath, 'rev-parse', '--show-toplevel'], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+        }).trim();
+        if (resolveRealPath(top) !== resolveRealPath(installPath)) {
+            return null;
         }
+        return gitShortHash(installPath);
+    } catch {
         return null;
     }
+}
+
+function resolveInstalledPackageDir(
+    portalPackageRoot: string,
+    dependencyName: string,
+): string | null {
+    const linked = join(portalPackageRoot, 'node_modules', dependencyName);
+    if (existsSync(linked)) {
+        return resolveRealPath(linked);
+    }
+    try {
+        const req = createRequire(join(portalPackageRoot, 'package.json'));
+        const entry = req.resolve(dependencyName);
+        let dir = dirname(entry);
+        while (true) {
+            const pkgPath = join(dir, 'package.json');
+            if (existsSync(pkgPath)) {
+                const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { name?: string };
+                if (pkg.name === dependencyName) {
+                    return resolveRealPath(dir);
+                }
+            }
+            const parent = dirname(dir);
+            if (parent === dir) {
+                break;
+            }
+            dir = parent;
+        }
+    } catch {
+        /* not installed */
+    }
+    return null;
 }
 
 export interface VersionComponentInfo {
@@ -148,24 +146,19 @@ export function collectPortalVersionInfo(opts: PortalVersionRegistration): Porta
     const portalName =
         opts.portalPackageName ?? readPackageName(portalRoot) ?? basenameFallback(portalRoot);
     const portalVersion = readPackageVersion(portalRoot) ?? 'unknown';
-    const portalGit = gitShortHash(portalRoot);
+    const portalGit = gitShortHashIfRepoRoot(portalRoot);
 
     const dependencies: VersionComponentInfo[] = [];
     for (const dep of opts.dependencies ?? []) {
-        const resolved = resolveDependencyRoot(portalRoot, dep.dependencyName, dep.gitRoot);
-        const version =
-            (resolved ? readPackageVersion(resolved.installPath) : null) ??
-            readPackageVersion(join(portalRoot, 'node_modules', dep.dependencyName)) ??
-            'unknown';
-        const gitRoot =
-            resolved?.gitRoot ?? (dep.gitRoot && gitShortHash(dep.gitRoot) ? dep.gitRoot : null);
-        const hash = gitRoot ? gitShortHash(gitRoot) : null;
+        const installPath = resolveInstalledPackageDir(portalRoot, dep.dependencyName);
+        const version = installPath ? (readPackageVersion(installPath) ?? 'unknown') : 'unknown';
         const entry: VersionComponentInfo = { name: dep.label, version };
-        if (hash) {
-            entry.gitShortHash = hash;
-        }
-        if (resolved?.installPath) {
-            entry.installPath = resolved.installPath;
+        if (installPath) {
+            entry.installPath = installPath;
+            const hash = gitShortHashIfRepoRoot(installPath);
+            if (hash) {
+                entry.gitShortHash = hash;
+            }
         }
         dependencies.push(entry);
     }
@@ -272,11 +265,13 @@ export async function runPortalVersionCommand(
     }
     const info = collectPortalVersionInfo(registration);
     const env = portalVersionEnvelope(portalLabel, info, ctx.json);
-    if (!ctx.json) {
-        (ctx.stderr ?? process.stderr).write(formatPortalVersionTerminal(info));
+    const stdout = ctx.stdout ?? process.stdout;
+    const isInteractiveTty = !ctx.json && Boolean((stdout as NodeJS.WriteStream).isTTY);
+    if (isInteractiveTty) {
+        stdout.write(formatPortalVersionTerminal(info));
+        return { ...env, meta: { ...env.meta, suppress_tty_status: true } };
     }
     return env;
 }
 
-// re-export for tests that import from package root via portal subpath
 export const portalVersionModulePath = fileURLToPath(import.meta.url);
