@@ -40,10 +40,15 @@ export function shouldColorStream(
 
 function levelForLine(line: string): 'error' | 'warn' | 'ok' | 'debug' | 'info' {
     const t = line.trimStart();
-    const upper = t.toUpperCase();
 
     if (t.startsWith('错误:')) {
         return 'error';
+    }
+    if (/^error:/i.test(t)) {
+        return 'error';
+    }
+    if (/^warn:/i.test(t)) {
+        return 'warn';
     }
 
     if (/^summary:/i.test(t)) {
@@ -54,22 +59,22 @@ function levelForLine(line: string): 'error' | 'warn' | 'ok' | 'debug' | 'info' 
         return 'info';
     }
 
-    if (/^error:/i.test(t) || upper.startsWith('ERROR:')) {
+    if (/^FAIL\b/.test(t)) {
         return 'error';
     }
-    if (/\bFAIL\b/.test(upper) || /\bERROR\b/.test(upper)) {
-        return 'error';
-    }
-    if (/\bSKIP\b/.test(upper) || /\bWARN\b/.test(upper) || upper.startsWith('WARN:')) {
+    if (/^SKIP\b/.test(t)) {
         return 'warn';
     }
-    if (/\bOK\b/.test(upper)) {
+    if (/^OK\b/.test(t)) {
         return 'ok';
     }
-    if (/\bDEBUG\b/.test(upper) || upper.startsWith('debug:')) {
+    if (/^WARN\b/.test(t)) {
+        return 'warn';
+    }
+    if (/^DEBUG\b/.test(t) || /^debug:/i.test(t)) {
         return 'debug';
     }
-    if (t.includes('未知工具') || t.startsWith('未知选择')) {
+    if (t === '未知工具' || t.startsWith('未知工具:') || t === '未知选择') {
         return 'error';
     }
     return 'info';

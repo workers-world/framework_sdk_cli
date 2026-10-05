@@ -17,6 +17,7 @@ export interface RunToolResult {
 function createLineWriter(
     stream: NodeJS.WritableStream,
     color: boolean,
+    flushPartials: boolean,
 ): {
     write: (chunk: string) => void;
     flush: () => void;
@@ -25,6 +26,24 @@ function createLineWriter(
     return {
         write(chunk: string) {
             pending += chunk;
+            if (flushPartials) {
+                const lastNl = pending.lastIndexOf('\n');
+                if (lastNl >= 0) {
+                    const block = pending.slice(0, lastNl + 1);
+                    pending = pending.slice(lastNl + 1);
+                    for (const line of block.split('\n')) {
+                        if (line.length === 0) {
+                            continue;
+                        }
+                        stream.write(`${colorizeLogLine(line, color)}\n`);
+                    }
+                }
+                if (pending.length > 0) {
+                    stream.write(pending);
+                    pending = '';
+                }
+                return;
+            }
             const parts = pending.split('\n');
             pending = parts.pop() ?? '';
             for (const line of parts) {
@@ -33,7 +52,7 @@ function createLineWriter(
         },
         flush() {
             if (pending.length > 0) {
-                stream.write(colorizeLogLine(pending, color));
+                stream.write(flushPartials ? pending : colorizeLogLine(pending, color));
                 pending = '';
             }
         },
@@ -64,9 +83,8 @@ export async function runWorkspaceTool(
     const portalStdout = opts.io?.stdout ?? process.stdout;
     const portalStderr = opts.io?.stderr ?? process.stderr;
 
-    /** --json / 非 TTY：脚本输出无着色写到 stderr，stdout 留给信封 */
     const scriptOutStream = jsonMode ? portalStderr : portalStdout;
-    const scriptErrStream = jsonMode ? portalStderr : portalStderr;
+    const scriptErrStream = portalStderr;
 
     const applied = applySkipArgs(
         workspaceRoot,
@@ -105,10 +123,11 @@ export async function runWorkspaceTool(
 
     const colorOut = shouldColorStream(scriptOutStream, { json: jsonMode });
     const colorErr = shouldColorStream(scriptErrStream, { json: jsonMode });
+    const flushPartials = interactive;
 
     return new Promise((resolve) => {
-        const outWriter = createLineWriter(scriptOutStream, colorOut);
-        const errWriter = createLineWriter(scriptErrStream, colorErr);
+        const outWriter = createLineWriter(scriptOutStream, colorOut, flushPartials);
+        const errWriter = createLineWriter(scriptErrStream, colorErr, flushPartials);
         const child = spawn(cmd, cmdArgs, {
             cwd: workspaceRoot,
             env,

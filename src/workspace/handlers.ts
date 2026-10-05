@@ -10,6 +10,7 @@ import { runWorkspaceTool } from './exec-script.js';
 import { takePortalFlags } from './flags.js';
 import { parseArgLine } from './parse-arg-line.js';
 import { requireWorkspaceRoot, resolveWorkspaceRoot } from './root.js';
+import { sideEffectsForScriptExit } from './script-side-effects.js';
 import {
     loadSkipFile,
     normalizeRepoName,
@@ -183,6 +184,7 @@ async function executeTool(
         result.exitCode,
         { code: 'SCRIPT_FAILED', message: `exit ${result.exitCode}` },
         data,
+        sideEffectsForScriptExit(tool.id, result.argv, result.exitCode),
     );
 }
 

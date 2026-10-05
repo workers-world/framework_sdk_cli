@@ -122,8 +122,26 @@ describe('ww wt portal fixes (WW-126 e2e)', () => {
 
     it('script exit 5 is not retryable in envelope', async () => {
         const ctx = { json: true, portal: 'ww' };
-        const env = wtErr(ctx, 'push', 5, { code: 'SCRIPT_FAILED', message: 'exit 5' });
+        const env = wtErr(
+            ctx,
+            'push',
+            5,
+            { code: 'SCRIPT_FAILED', message: 'exit 5' },
+            undefined,
+            'unknown',
+        );
         expect(env.meta.retryable).toBe(false);
         expect(env.meta.exit_code).toBe(5);
+        expect(env.meta.side_effects).toBe('unknown');
+    });
+
+    it('push script exit sets side_effects unknown', async () => {
+        const result = await runPortal({
+            argv: ['wt', 'push', '--json'],
+            noExit: true,
+            stdout: nullIo(),
+            stderr: nullIo(),
+        });
+        expect(result.meta.side_effects).toBe('unknown');
     });
 });

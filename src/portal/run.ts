@@ -198,19 +198,9 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         toolParsed.flags.has('h');
 
     const toolHelpCmd = tool.commands.find((c) => c.name === 'help');
+    const wtPortalHelp = tool.id === 'wt' && toolHelpCmd;
 
-    if (toolHelpFlag && !tCmd) {
-        if (toolHelpCmd) {
-            const result = await toolHelpCmd.handler([], { ...ctx, toolId: tool.id });
-            return finish(result, opts, json);
-        }
-    }
-
-    if (!tCmd) {
-        if (tool.defaultHandler) {
-            const result = await tool.defaultHandler(toolTail, { ...ctx, toolId: tool.id });
-            return finish(result, opts, json);
-        }
+    const finishGenericToolHelp = (): ProcessEnvelope => {
         const text = helpText(tool.id);
         if (!json) {
             (opts.stderr ?? process.stderr).write(`${text}\n`);
@@ -221,15 +211,28 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
             return result;
         }
         return finish(okEnvelope(`${portal} help ${tool.id}`, { help: text }), opts, json);
+    };
+
+    if (toolHelpFlag && !tCmd && wtPortalHelp) {
+        const result = await toolHelpCmd.handler([], { ...ctx, toolId: tool.id });
+        return finish(result, opts, json);
+    }
+
+    if (!tCmd) {
+        if (tool.defaultHandler && !toolHelpFlag) {
+            const result = await tool.defaultHandler(toolTail, { ...ctx, toolId: tool.id });
+            return finish(result, opts, json);
+        }
+        return finishGenericToolHelp();
     }
 
     if (tCmd === 'help' || tCmd === '--help' || tCmd === '-h') {
-        if (toolHelpCmd) {
-            const helpArgs =
-                tCmd === 'help' ? toolParsed.positional.slice(1) : toolParsed.positional.slice(1);
+        if (wtPortalHelp) {
+            const helpArgs = tCmd === 'help' ? toolParsed.positional.slice(1) : [];
             const result = await toolHelpCmd.handler(helpArgs, { ...ctx, toolId: tool.id });
             return finish(result, opts, json);
         }
+        return finishGenericToolHelp();
     }
 
     const cmd = tool.commands.find((c) => c.name === tCmd);

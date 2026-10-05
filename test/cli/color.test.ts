@@ -49,6 +49,11 @@ describe('cli color (WW-126)', () => {
         expect(line).not.toBe('错误: demo');
     });
 
+    it('可用 list with skip word stays default color', () => {
+        const line = colorizeLogLine('可用: pull, push, bump-sdk, remote, cloc, skip', true);
+        expect(line).toBe('可用: pull, push, bump-sdk, remote, cloc, skip');
+    });
+
     it('FORCE_COLOR=0 disables color on TTY', () => {
         const prev = process.env.FORCE_COLOR;
         process.env.FORCE_COLOR = '0';
