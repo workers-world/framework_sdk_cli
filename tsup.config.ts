@@ -8,6 +8,7 @@ export default defineConfig({
         'http/index': 'src/http/index.ts',
         'portal/index': 'src/portal/index.ts',
         'search/index': 'src/search/index.ts',
+        'workspace/index': 'src/workspace/index.ts',
     },
     format: ['esm'],
     dts: true,
