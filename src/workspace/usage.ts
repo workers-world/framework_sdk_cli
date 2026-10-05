@@ -1,7 +1,10 @@
 import { catalogIds, WORKSPACE_CATALOG } from './catalog.js';
+import { wtExtensionIds, wtPortalExtensions } from './extensions.js';
 
 /** 门户 usage（WW-126：ww wt 前缀；无 install / __WT_JSON__ / .wt-skip.json） */
 export function usageText(_skipFileDisplayPath: string): string {
+    const toolIds = [...catalogIds(), ...wtExtensionIds()];
+    const extLines = wtPortalExtensions().map((e) => `  ${e.id.padEnd(16)} ${e.summary}`);
     return [
         '用法: ww wt [<command>] [options]',
         '',
@@ -11,8 +14,9 @@ export function usageText(_skipFileDisplayPath: string): string {
         '  run <id> [--json] [--] [args...]   执行工具（参数透传）',
         '  pull|push|…      等同 run <id>',
         '  skip …           按子命令跳过仓（ww wt skip --help）',
+        ...(extLines.length ? ['', ...extLines] : []),
         '',
-        `工具 id: ${catalogIds().join(', ')}`,
+        `工具 id: ${toolIds.join(', ')}`,
         '',
         'run 时自动把 skip[id] 转成 --exclude；一次忽略名单加 --no-skip。',
         'Agent: ww wt list --json；ww wt skip list --json；ww wt run <id> --json 输出 ww 进程信封。',
