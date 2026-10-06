@@ -42,6 +42,7 @@ describe('resolveMachineToken', () => {
         KEY1_API_TOKEN: process.env.KEY1_API_TOKEN,
         WW_API_TOKEN: process.env.WW_API_TOKEN,
         RULES_ADMIN_TOKEN: process.env.RULES_ADMIN_TOKEN,
+        WW_CONFIG_DIR: process.env.WW_CONFIG_DIR,
     };
 
     afterEach(() => {
@@ -66,5 +67,28 @@ describe('resolveMachineToken', () => {
         delete process.env.WW_API_TOKEN;
         process.env.RULES_ADMIN_TOKEN = 'god';
         expect(resolveMachineToken()).toBe('god');
+    });
+
+    it('falls back to credentials file', async () => {
+        const { mkdtempSync } = await import('node:fs');
+        const { tmpdir } = await import('node:os');
+        const { join } = await import('node:path');
+        const { writeCredentials } = await import('../../src/http/credentials.js');
+        delete process.env.KEY1_API_TOKEN;
+        delete process.env.WW_API_TOKEN;
+        delete process.env.RULES_ADMIN_TOKEN;
+        const dir = mkdtempSync(join(tmpdir(), 'ww-cred-'));
+        process.env.WW_CONFIG_DIR = dir;
+        writeCredentials({
+            credential_id: 'id1',
+            token: 'key1_dev_file',
+            prefix: 'key1_dev_fi',
+            principal: 'a@b.test',
+            scopes: ['planning.read'],
+            issued_at: new Date().toISOString(),
+            expires_at: new Date(Date.now() + 86400000).toISOString(),
+            key1_base: 'https://key1.test',
+        });
+        expect(resolveMachineToken()).toBe('key1_dev_file');
     });
 });

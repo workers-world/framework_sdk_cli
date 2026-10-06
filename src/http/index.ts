@@ -6,8 +6,17 @@ export {
     type WorkerIoLike,
 } from './bearer.js';
 export {
+    credentialsPath,
+    deleteCredentials,
+    readCredentials,
+    resolveWwConfigDir,
+    type WwCredentialsFile,
+    writeCredentials,
+} from './credentials.js';
+export {
     requireEnv,
     resolveDeployTrackerBase,
+    resolveKey1Base,
     resolveMachineToken,
     resolveRulesAdminToken,
 } from './env.js';
@@ -20,3 +29,4 @@ export {
     resetDotEnvLoadedForTests,
 } from './load-dotenv.js';
 export { mapWorkerIoToProcess } from './map-worker-io.js';
+export { parseTtlToMs } from './ttl.js';
