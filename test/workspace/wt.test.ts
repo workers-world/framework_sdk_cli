@@ -36,7 +36,14 @@ describe('ww wt workspace tools (WW-126)', () => {
         expect(result.meta.command).toBe('ww wt list');
         const data = result.data as Array<{ id: string; title: string }>;
         expect(Array.isArray(data)).toBe(true);
-        expect(data.map((t) => t.id)).toEqual(['pull', 'push', 'bump-sdk', 'remote', 'cloc']);
+        expect(data.map((t) => t.id)).toEqual([
+            'pull',
+            'push',
+            'bump-sdk',
+            'remote',
+            'cloc',
+            'squash-bumps',
+        ]);
         expect(data[0]?.title).toBe('批量拉取');
     });
 

@@ -39,8 +39,10 @@ function benchExtension(handler?: WtPortalExtension['handler']): WtPortalExtensi
     };
 }
 
-/** 无扩展时的 usage / list 基线（与 WW-126 行为一致）。 */
-const BASELINE_USAGE = usageText('cloudflare_work/.ww-workspace-skip.json');
+/** 无 ww 侧 extensions 时的 usage / list 基线（含内置 squash-bumps）。 */
+function baselineUsage(skipPath: string) {
+    return usageText(skipPath);
+}
 
 describe('ww wt portal extensions (WW-125)', () => {
     let workspace: ReturnType<typeof isolatedWorkspaceFixture>;
@@ -56,9 +58,11 @@ describe('ww wt portal extensions (WW-125)', () => {
         workspace.cleanup();
     });
 
-    it('无 extensions 时 usage 与 list --json 与基线一致', async () => {
+    it('无 ww extensions 时 list --json 含内置 squash-bumps', async () => {
         registerWorkspaceTools();
-        expect(usageText(`${workspace.root}/.ww-workspace-skip.json`)).toBe(BASELINE_USAGE);
+        expect(usageText(`${workspace.root}/.ww-workspace-skip.json`)).toBe(
+            baselineUsage(`${workspace.root}/.ww-workspace-skip.json`),
+        );
 
         const result = await runPortal({
             argv: ['wt', 'list', '--json'],
@@ -68,8 +72,15 @@ describe('ww wt portal extensions (WW-125)', () => {
         });
         expect(result.ok).toBe(true);
         const data = result.data as Array<{ id: string; kind?: string }>;
-        expect(data.map((t) => t.id)).toEqual(['pull', 'push', 'bump-sdk', 'remote', 'cloc']);
-        expect(data.every((t) => t.kind == null)).toBe(true);
+        expect(data.map((t) => t.id)).toEqual([
+            'pull',
+            'push',
+            'bump-sdk',
+            'remote',
+            'cloc',
+            'squash-bumps',
+        ]);
+        expect(data.find((t) => t.id === 'squash-bumps')?.kind).toBe('portal');
     });
 
     it('list --json 包含 portal 扩展 kind', async () => {

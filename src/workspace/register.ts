@@ -12,6 +12,7 @@ import {
     handleWtRun,
     handleWtSkip,
 } from './handlers.js';
+import { squashBumpsExtension } from './squash-bumps.js';
 
 export interface RegisterWorkspaceToolsOptions {
     /** 传给 resolveWorkspaceRoot 的额外 walk 起点（如 ww 安装目录） */
@@ -26,8 +27,9 @@ export interface RegisterWorkspaceToolsOptions {
  */
 export function registerWorkspaceTools(opts: RegisterWorkspaceToolsOptions = {}): void {
     setWorkspaceExtraRootStarts(opts.extraRootStarts ?? []);
-    setWtPortalExtensions(opts.extensions ?? []);
-    const extIds = (opts.extensions ?? []).map((e) => e.id);
+    const allExtensions = [squashBumpsExtension, ...(opts.extensions ?? [])];
+    setWtPortalExtensions(allExtensions);
+    const extIds = allExtensions.map((e) => e.id);
     const mutatingToolIds = new Set(['pull', 'push', 'bump-sdk']);
     const directCommands = WORKSPACE_CATALOG.map((s) => ({
         name: s.id,
@@ -35,7 +37,7 @@ export function registerWorkspaceTools(opts: RegisterWorkspaceToolsOptions = {})
         mutating: mutatingToolIds.has(s.id),
         handler: (argv: string[], ctx: PortalContext) => handleWtDirectRun(s.id, argv, ctx),
     }));
-    const extensionCommands = (opts.extensions ?? []).map((ext) => ({
+    const extensionCommands = allExtensions.map((ext) => ({
         name: ext.id,
         summary: ext.summary,
         handler: (argv: string[], ctx: PortalContext) => invokeWtExtension(ext, argv, ctx),
@@ -45,7 +47,7 @@ export function registerWorkspaceTools(opts: RegisterWorkspaceToolsOptions = {})
     registerTool({
         id: 'wt',
         title: '工作区工具',
-        summary: 'cloudflare_work workspace-tools（pull/push/bump-sdk/remote/cloc）',
+        summary: 'cloudflare_work workspace-tools（pull/push/bump-sdk/squash-bumps/remote/cloc）',
         keywords: ['workspace', 'git', 'bulk', 'cloudflare_work', 'pull', 'push', 'wt'],
         defaultHandler: handleWtInteractive,
         commands: [
