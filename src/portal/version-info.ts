@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { okEnvelope, type ProcessEnvelope } from '../envelope/index.js';
+import { stripTrailingSlashes } from '../strings/strip-trailing-slashes.js';
 import { registerTool } from './registry.js';
 import type { PortalContext } from './types.js';
 
@@ -177,7 +178,7 @@ export function collectPortalVersionInfo(opts: PortalVersionRegistration): Porta
 }
 
 function basenameFallback(p: string): string {
-    const parts = p.replace(/\/+$/, '').split(/[/\\]/);
+    const parts = stripTrailingSlashes(p).split(/[/\\]/);
     return parts[parts.length - 1] ?? 'portal';
 }
 

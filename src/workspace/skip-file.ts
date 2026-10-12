@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { stripTrailingSlashes } from '../strings/strip-trailing-slashes.js';
 
 /** 新跳过列表文件名（不读 `.wt-skip.json`；格式与旧 skip 对象相同）。 */
 export const WORKSPACE_SKIP_FILENAME = '.ww-workspace-skip.json';
@@ -17,7 +18,7 @@ export function normalizeRepoName(raw: string): string {
     if (!s) {
         return '';
     }
-    s = s.replace(/\/+$/, '');
+    s = stripTrailingSlashes(s);
     if (s === '.' || s === 'meta-root') {
         return 'meta-root';
     }
