@@ -79,8 +79,10 @@ describe('ww wt portal extensions (WW-125)', () => {
             'remote',
             'cloc',
             'squash-bumps',
+            'here-push',
         ]);
         expect(data.find((t) => t.id === 'squash-bumps')?.kind).toBe('portal');
+        expect(data.find((t) => t.id === 'here-push')?.kind).toBe('portal');
     });
 
     it('list --json 包含 portal 扩展 kind', async () => {

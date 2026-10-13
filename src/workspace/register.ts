@@ -12,6 +12,7 @@ import {
     handleWtRun,
     handleWtSkip,
 } from './handlers.js';
+import { herePushExtension } from './here-push.js';
 import { squashBumpsExtension } from './squash-bumps.js';
 
 export interface RegisterWorkspaceToolsOptions {
@@ -27,10 +28,10 @@ export interface RegisterWorkspaceToolsOptions {
  */
 export function registerWorkspaceTools(opts: RegisterWorkspaceToolsOptions = {}): void {
     setWorkspaceExtraRootStarts(opts.extraRootStarts ?? []);
-    const allExtensions = [squashBumpsExtension, ...(opts.extensions ?? [])];
+    const allExtensions = [squashBumpsExtension, herePushExtension, ...(opts.extensions ?? [])];
     setWtPortalExtensions(allExtensions);
     const extIds = allExtensions.map((e) => e.id);
-    const mutatingToolIds = new Set(['pull', 'push', 'bump-sdk']);
+    const mutatingToolIds = new Set(['pull', 'push', 'bump-sdk', 'here-push']);
     const directCommands = WORKSPACE_CATALOG.map((s) => ({
         name: s.id,
         summary: s.summary,
@@ -40,6 +41,7 @@ export function registerWorkspaceTools(opts: RegisterWorkspaceToolsOptions = {})
     const extensionCommands = allExtensions.map((ext) => ({
         name: ext.id,
         summary: ext.summary,
+        mutating: mutatingToolIds.has(ext.id),
         handler: (argv: string[], ctx: PortalContext) => invokeWtExtension(ext, argv, ctx),
     }));
     const runIds = [...catalogIds(), ...extIds].join(', ');
@@ -47,7 +49,8 @@ export function registerWorkspaceTools(opts: RegisterWorkspaceToolsOptions = {})
     registerTool({
         id: 'wt',
         title: '工作区工具',
-        summary: 'cloudflare_work workspace-tools（pull/push/bump-sdk/squash-bumps/remote/cloc）',
+        summary:
+            'cloudflare_work workspace-tools（pull/push/here-push/bump-sdk/squash-bumps/remote/cloc）',
         keywords: ['workspace', 'git', 'bulk', 'cloudflare_work', 'pull', 'push', 'wt'],
         defaultHandler: handleWtInteractive,
         commands: [

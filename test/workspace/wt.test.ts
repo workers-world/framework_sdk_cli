@@ -43,6 +43,7 @@ describe('ww wt workspace tools (WW-126)', () => {
             'remote',
             'cloc',
             'squash-bumps',
+            'here-push',
         ]);
         expect(data[0]?.title).toBe('批量拉取');
     });
@@ -64,11 +65,13 @@ describe('ww wt workspace tools (WW-126)', () => {
         const pull = wt?.commands.find((c) => c.name === 'pull');
         const push = wt?.commands.find((c) => c.name === 'push');
         const bump = wt?.commands.find((c) => c.name === 'bump-sdk');
+        const herePush = wt?.commands.find((c) => c.name === 'here-push');
         const remote = wt?.commands.find((c) => c.name === 'remote');
         const cloc = wt?.commands.find((c) => c.name === 'cloc');
         expect(pull?.mutating).toBe(true);
         expect(push?.mutating).toBe(true);
         expect(bump?.mutating).toBe(true);
+        expect(herePush?.mutating).toBe(true);
         expect(remote?.mutating).toBe(false);
         expect(cloc?.mutating).toBe(false);
     });
