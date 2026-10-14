@@ -18,7 +18,7 @@ function parseSquashArgv(argv: string[]): { apply: boolean; exclude: string[]; h
     const exclude: string[] = [];
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
-        if (a === '--apply') {
+        if (a === '--apply' || a === '--confirm') {
             apply = true;
         } else if (a === '--dry-run') {
             apply = false;
@@ -37,7 +37,7 @@ function helpText(): string {
         'squash-bumps — 压缩 workspace 各仓 tip 上未 push 的连续 bump commit',
         '',
         '默认 --dry-run：只列出可压缩的仓与 commit 主题，不改写历史。',
-        '  --apply          执行 git reset --soft 压成 1 条（不 force-push）',
+        '  --apply | --confirm  执行 git reset --soft 压成 1 条（不 force-push）',
         '  --exclude name   排除目录（可重复）',
         '',
         '硬闸：仅未 push tip；遇 merge / 非 bump / 业务 commit / 脏工作区则跳过该仓。',

@@ -7,7 +7,8 @@ import {
     writeEnvelope,
 } from '../envelope/index.js';
 import { ensureDotEnvLoaded } from '../http/load-dotenv.js';
-import { searchTools } from '../search/index.js';
+import { DEFAULT_SEARCH_LIMIT, searchTools } from '../search/index.js';
+import { buildCommandHelp, commandSchema } from './command-meta.js';
 import {
     clearRegisteredTools,
     getRegisteredTool,
@@ -23,15 +24,21 @@ function agentNotice(): string {
     return 'Agent: write ops need --confirm after user approval; prefer --json; never put tokens in argv.';
 }
 
+function discoveryBanner(): string {
+    return 'Discover: ww search "<intent>" [--limit N] [--json] → ww list --json → ww help <tool> (one help; avoid chaining --help on subcommands).';
+}
+
 function helpText(toolId?: string): string {
     const lines = [
         agentNotice(),
+        discoveryBanner(),
         '',
         'Usage:',
         '  ww version [--json]  (aliases: ww --version, ww -v)',
         '  ww list [--json]',
         '  ww help [tool]',
-        '  ww search "<query>" [--json]',
+        '  ww search "<query>" [--limit N] [--json]',
+        '  ww schema <tool> <command> [--json]',
         '  ww <tool> <command> …',
         '',
     ];
@@ -148,25 +155,91 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
                 name: c.name,
                 summary: c.summary,
                 mutating: Boolean(c.mutating),
+                confirmRequired: Boolean(c.mutating),
+                ...(c.usage ? { usage: c.usage } : {}),
+                ...(c.flags?.length ? { flags: c.flags } : {}),
             })),
         }));
         return finish(okEnvelope(`${portal} list`, { tools }), opts, json);
     }
 
-    if (head === 'search') {
-        const query = positional.slice(1).join(' ').trim();
-        if (!query) {
+    if (head === 'schema') {
+        const toolId = positional[1];
+        const cmdName = positional[2];
+        if (!toolId || !cmdName) {
             return finish(
-                errorEnvelope(`${portal} search`, EXIT.USAGE, {
+                errorEnvelope(`${portal} schema`, EXIT.USAGE, {
                     code: 'USAGE',
-                    message: 'usage: ww search "<query>"',
+                    message: `usage: ${portal} schema <tool> <command> [--json]`,
                 }),
                 opts,
                 json,
             );
         }
-        const matches = searchTools(query, listRegisteredTools());
-        return finish(okEnvelope(`${portal} search`, { query, matches }), opts, json);
+        const schemaTool = getRegisteredTool(toolId);
+        if (!schemaTool) {
+            return finish(
+                errorEnvelope(`${portal} schema`, EXIT.USAGE, {
+                    code: 'UNKNOWN_TOOL',
+                    message: `unknown tool "${toolId}"`,
+                }),
+                opts,
+                json,
+            );
+        }
+        const schemaCmd = schemaTool.commands.find((c) => c.name === cmdName);
+        if (!schemaCmd) {
+            return finish(
+                errorEnvelope(`${portal} schema`, EXIT.USAGE, {
+                    code: 'UNKNOWN_COMMAND',
+                    message: `unknown command "${cmdName}"`,
+                }),
+                opts,
+                json,
+            );
+        }
+        return finish(
+            okEnvelope(
+                `${portal} schema ${toolId} ${cmdName}`,
+                commandSchema(schemaTool, schemaCmd),
+            ),
+            opts,
+            json,
+        );
+    }
+
+    if (head === 'search') {
+        const searchTail = argv.slice(argv.indexOf('search') + 1);
+        const parsed = parseNamedArgs(searchTail);
+        const query = parsed.positional.join(' ').trim();
+        const limitRaw = parsed.named.limit;
+        let limit = DEFAULT_SEARCH_LIMIT;
+        if (limitRaw != null && limitRaw !== '') {
+            const n = Number.parseInt(limitRaw, 10);
+            if (!Number.isFinite(n) || n < 1) {
+                return finish(
+                    errorEnvelope(`${portal} search`, EXIT.USAGE, {
+                        code: 'USAGE',
+                        message: 'usage: ww search "<query>" [--limit N]',
+                    }),
+                    opts,
+                    json,
+                );
+            }
+            limit = n;
+        }
+        if (!query) {
+            return finish(
+                errorEnvelope(`${portal} search`, EXIT.USAGE, {
+                    code: 'USAGE',
+                    message: 'usage: ww search "<query>" [--limit N]',
+                }),
+                opts,
+                json,
+            );
+        }
+        const matches = searchTools(query, listRegisteredTools(), limit, portal);
+        return finish(okEnvelope(`${portal} search`, { query, limit, matches }), opts, json);
     }
 
     if (head === 'install' || head === 'uninstall') {
@@ -264,6 +337,30 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
 
     const cmdIdx = toolTail.indexOf(tCmd);
     const rest = cmdIdx >= 0 ? toolTail.slice(cmdIdx + 1) : [];
+    const restParsed = parseNamedArgs(rest);
+    const cmdHelpFlag =
+        rest.some((a) => a === '--help' || a === '-h') ||
+        restParsed.flags.has('help') ||
+        restParsed.flags.has('h');
+
+    if (cmdHelpFlag) {
+        if (tool.id === 'wt') {
+            const result = await cmd.handler(rest, { ...ctx, toolId: tool.id });
+            return finish(result, opts, json);
+        }
+        const { help, flags } = buildCommandHelp(portal, tool, cmd);
+        const payload = { help, flags, ...commandSchema(tool, cmd) };
+        if (!json) {
+            (opts.stderr ?? process.stderr).write(`${help}\n`);
+            const result = okEnvelope(`${portal} help ${tool.id} ${cmd.name}`, payload);
+            if (!opts.noExit) {
+                process.exit(EXIT.OK);
+            }
+            return result;
+        }
+        return finish(okEnvelope(`${portal} help ${tool.id} ${cmd.name}`, payload), opts, json);
+    }
+
     const result = await cmd.handler(rest, { ...ctx, toolId: tool.id });
     return finish(result, opts, json);
 }
