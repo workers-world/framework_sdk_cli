@@ -69,8 +69,13 @@ export function needConfirmEnvelope(
     command: string,
     data: unknown,
     message = 'confirm required; re-run with --confirm after user approval',
+    opts?: { rerun?: string },
 ): ProcessEnvelope {
-    return errorEnvelope(command, EXIT.USAGE, { code: 'NEED_CONFIRM', message }, { data });
+    const rerun = (opts?.rerun ?? `${command} --confirm --json`).trim();
+    const base = message.includes('--confirm --json')
+        ? message
+        : `${message.replace(/\s+$/, '')} Re-run: ${rerun}`;
+    return errorEnvelope(command, EXIT.USAGE, { code: 'NEED_CONFIRM', message: base }, { data });
 }
 
 export function writeEnvelope(

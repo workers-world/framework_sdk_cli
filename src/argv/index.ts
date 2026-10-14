@@ -1,1 +1,8 @@
-export { hasConfirmFlag, hasJsonFlag, parseNamedArgs, stripFlags } from './flags.js';
+export {
+    hasConfirmFlag,
+    hasJsonFlag,
+    hasWriteConfirmFlag,
+    mapConfirmToApplyArgv,
+    parseNamedArgs,
+    stripFlags,
+} from './flags.js';

@@ -14,6 +14,7 @@ describe('process envelope', () => {
         const e = needConfirmEnvelope('ww pgreq issue', { preview: { title: 't' } });
         expect(e.ok).toBe(false);
         expect(e.error?.code).toBe('NEED_CONFIRM');
+        expect(e.error?.message).toContain('--confirm --json');
         expect(e.meta.exit_code).toBe(EXIT.USAGE);
         expect(e.data).toEqual({ preview: { title: 't' } });
     });
