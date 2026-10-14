@@ -36,7 +36,15 @@ describe('ww wt workspace tools (WW-126)', () => {
         expect(result.meta.command).toBe('ww wt list');
         const data = result.data as Array<{ id: string; title: string }>;
         expect(Array.isArray(data)).toBe(true);
-        expect(data.map((t) => t.id)).toEqual(['pull', 'push', 'bump-sdk', 'remote', 'cloc']);
+        expect(data.map((t) => t.id)).toEqual([
+            'pull',
+            'push',
+            'bump-sdk',
+            'remote',
+            'cloc',
+            'squash-bumps',
+            'here-push',
+        ]);
         expect(data[0]?.title).toBe('批量拉取');
     });
 
@@ -57,12 +65,16 @@ describe('ww wt workspace tools (WW-126)', () => {
         const pull = wt?.commands.find((c) => c.name === 'pull');
         const push = wt?.commands.find((c) => c.name === 'push');
         const bump = wt?.commands.find((c) => c.name === 'bump-sdk');
+        const herePush = wt?.commands.find((c) => c.name === 'here-push');
         const remote = wt?.commands.find((c) => c.name === 'remote');
         const cloc = wt?.commands.find((c) => c.name === 'cloc');
         expect(pull?.mutating).toBe(true);
         expect(push?.mutating).toBe(true);
         expect(bump?.mutating).toBe(true);
-        expect(remote?.mutating).toBe(false);
+        expect(herePush?.mutating).toBe(true);
+        const squash = wt?.commands.find((c) => c.name === 'squash-bumps');
+        expect(remote?.mutating).toBe(true);
+        expect(squash?.mutating).toBe(true);
         expect(cloc?.mutating).toBe(false);
     });
 

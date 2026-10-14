@@ -5,6 +5,22 @@ export function hasConfirmFlag(argv: string[]): boolean {
     return argv.includes('--confirm');
 }
 
+/** wt 写操作：`--confirm` 与 `--apply` 等价（对齐门户 Gate A 词汇） */
+export function hasWriteConfirmFlag(argv: string[]): boolean {
+    return argv.includes('--confirm') || argv.includes('--apply');
+}
+
+/** 将门户 `--confirm` 映射为脚本侧的 `--apply`（不重复插入） */
+export function mapConfirmToApplyArgv(argv: string[]): string[] {
+    if (!argv.includes('--confirm')) {
+        return argv;
+    }
+    if (argv.includes('--apply')) {
+        return argv.filter((a) => a !== '--confirm');
+    }
+    return argv.map((a) => (a === '--confirm' ? '--apply' : a));
+}
+
 export function hasJsonFlag(argv: string[]): boolean {
     return argv.includes('--json');
 }

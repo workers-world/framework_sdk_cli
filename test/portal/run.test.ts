@@ -47,13 +47,18 @@ describe('registerTool / search / list', () => {
         expect(data.tools[0]?.id).toBe('pgreq');
     });
 
-    it('search ranks pgreq issue', () => {
+    it('search ranks pgreq issue for create github issue', () => {
         registerTool({
             id: 'pgreq',
             title: '规划闸 A',
             summary: 'PGREQ 暂存 → GitHub Issue（无 agent-needed）',
             keywords: ['github', 'issue', 'planning'],
             commands: [
+                {
+                    name: 'create',
+                    summary: '创建规划暂存 PGREQ',
+                    handler: async () => okEnvelope('x', {}),
+                },
                 {
                     name: 'issue',
                     summary: '闸 A 建 GitHub Issue（须 --confirm）',
@@ -62,9 +67,86 @@ describe('registerTool / search / list', () => {
                 },
             ],
         });
-        const matches = searchTools('github issue confirm', listRegisteredTools());
+        const matches = searchTools('create github issue', listRegisteredTools());
         expect(matches[0]?.toolId).toBe('pgreq');
         expect(matches[0]?.command).toBe('issue');
+        expect(matches[0]?.suggested).toContain('--confirm');
+    });
+
+    it('search default limit is 5', () => {
+        for (let i = 0; i < 8; i++) {
+            registerTool({
+                id: `t${i}`,
+                title: `Tool ${i}`,
+                summary: 'alpha beta gamma search fixture',
+                commands: [
+                    {
+                        name: 'cmd',
+                        summary: 'alpha beta gamma',
+                        handler: async () => okEnvelope('x', {}),
+                    },
+                ],
+            });
+        }
+        const matches = searchTools('alpha beta gamma', listRegisteredTools());
+        expect(matches).toHaveLength(5);
+    });
+
+    it('subcommand --help --json exits 0 with flags', async () => {
+        registerTool({
+            id: 'pgreq',
+            title: '规划',
+            summary: 'planning',
+            commands: [
+                {
+                    name: 'create',
+                    summary: '创建 PGREQ',
+                    usage: 'ww pgreq create --title "…"',
+                    flags: [{ name: 'title', description: '标题', required: true }],
+                    handler: async () => okEnvelope('ww pgreq create', {}),
+                },
+            ],
+        });
+        const result = await runPortal({
+            argv: ['pgreq', 'create', '--help', '--json'],
+            noExit: true,
+            stdout: { write: () => true } as unknown as NodeJS.WritableStream,
+            stderr: { write: () => true } as unknown as NodeJS.WritableStream,
+        });
+        expect(result.ok).toBe(true);
+        expect(result.meta.exit_code).toBe(0);
+        const data = result.data as { help: string; flags: Array<{ name: string }> };
+        expect(data.flags.some((f) => f.name === 'title')).toBe(true);
+    });
+
+    it('subcommand missing args still USAGE when not --help', async () => {
+        registerTool({
+            id: 'pgreq',
+            title: '规划',
+            summary: 'planning',
+            commands: [
+                {
+                    name: 'create',
+                    summary: '创建',
+                    handler: async () =>
+                        (await import('../../src/envelope/index.js')).errorEnvelope(
+                            'ww pgreq create',
+                            2,
+                            {
+                                code: 'USAGE',
+                                message: 'missing title',
+                            },
+                        ),
+                },
+            ],
+        });
+        const result = await runPortal({
+            argv: ['pgreq', 'create', '--json'],
+            noExit: true,
+            stdout: { write: () => true } as unknown as NodeJS.WritableStream,
+            stderr: { write: () => true } as unknown as NodeJS.WritableStream,
+        });
+        expect(result.meta.exit_code).toBe(2);
     });
 
     it('search via runPortal', async () => {

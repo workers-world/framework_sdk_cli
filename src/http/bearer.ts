@@ -1,3 +1,5 @@
+import { stripTrailingSlashes } from '../strings/strip-trailing-slashes.js';
+
 export interface WorkerIoLike {
     id?: string;
     source?: string;
@@ -40,7 +42,7 @@ export function parseWorkerIo(raw: unknown): WorkerIoLike | null {
 
 export async function fetchBearer(opts: FetchBearerOptions): Promise<FetchBearerResult> {
     const fetchImpl = opts.fetchImpl ?? globalThis.fetch;
-    const base = opts.baseUrl.replace(/\/+$/, '');
+    const base = stripTrailingSlashes(opts.baseUrl);
     const path = opts.path.startsWith('/') ? opts.path : `/${opts.path}`;
     const url = `${base}${path}`;
     const headers: Record<string, string> = {
