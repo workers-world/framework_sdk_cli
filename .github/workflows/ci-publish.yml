@@ -109,6 +109,21 @@ jobs:
           npm publish
           echo "published=true" >> "$GITHUB_OUTPUT"
 
+      - name: Notify ww to pin SDK and bump
+        if: steps.publish_pkg.outputs.published == 'true'
+        env:
+          DISPATCH_TOKEN: ${{ secrets.WORKERS_WORLD_GHA_TOKEN || secrets.GITHUB_TOKEN }}
+          SDK_VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          set -euo pipefail
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/workers-world/ww/dispatches" \
+            -d "{\"event_type\":\"framework-sdk-published\",\"client_payload\":{\"version\":\"${SDK_VERSION}\"}}"
+          echo "Dispatched framework-sdk-published for ${SDK_VERSION}"
+
   # 新发 Packages 后打 v{semver}，触发 gh-release-on-tag → GitHub Release 页。
   tag-release:
     needs: publish
