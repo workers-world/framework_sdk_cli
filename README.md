@@ -34,3 +34,5 @@ npm run check && npm test && npm run build
 ## CI / 发版
 
 对齐 `framework_sdk_ui`：`dev_*` → sync-lock + verify；合入 `master` → publish `@workers-world/framework_sdk_cli` + `v*` tag → GitHub Release。
+
+**R2 旁路（与 ww 同票）**：[`registry_package` `published`](.github/workflows/sync-package-to-r2.yml) 独立 workflow 从 GitHub Packages 拉 tarball 写 R2 + `manifest.json`；**不**改 `ci-publish.yml`。Secrets/变量见 [ww README 制品分发](https://github.com/workers-world/ww#制品分发agent--本机--开发)。
