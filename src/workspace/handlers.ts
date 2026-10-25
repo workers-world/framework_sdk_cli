@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { mapConfirmToApplyArgv } from '../argv/flags.js';
 import type { ProcessEnvelope } from '../envelope/index.js';
 import { EXIT } from '../envelope/index.js';
 import type { PortalContext } from '../portal/types.js';
@@ -247,12 +246,11 @@ export async function handleWtRun(argv: string[], ctx: PortalContext): Promise<P
         return wtErr(ctx, 'run', EXIT.USAGE, { code: 'UNKNOWN_TOOL', message: `未知工具: ${id}` });
     }
     const { json, rest } = takePortalFlags(argv.slice(1));
-    const scriptArgv = mapConfirmToApplyArgv(rest);
-    const remoteErr = validateRemote(tool, scriptArgv, ctx, 'run');
+    const remoteErr = validateRemote(tool, rest, ctx, 'run');
     if (remoteErr) {
         return remoteErr;
     }
-    return executeTool(ctx, 'run', tool, scriptArgv, json);
+    return executeTool(ctx, 'run', tool, rest, json);
 }
 
 export async function handleWtDirectRun(
@@ -273,12 +271,11 @@ export async function handleWtDirectRun(
         });
     }
     const { json, rest } = takePortalFlags(argv);
-    const scriptArgv = mapConfirmToApplyArgv(rest);
-    const remoteErr = validateRemote(tool, scriptArgv, ctx, toolId);
+    const remoteErr = validateRemote(tool, rest, ctx, toolId);
     if (remoteErr) {
         return remoteErr;
     }
-    return executeTool(ctx, toolId, tool, scriptArgv, json);
+    return executeTool(ctx, toolId, tool, rest, json);
 }
 
 export async function handleWtSkip(argv: string[], ctx: PortalContext): Promise<ProcessEnvelope> {
