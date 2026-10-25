@@ -18,7 +18,7 @@ export function commandSchema(tool: ToolRegistration, cmd: ToolCommand): Command
         command: cmd.name,
         summary: cmd.summary,
         usage: cmd.usage,
-        confirmRequired: Boolean(cmd.mutating),
+        confirmRequired: cmd.confirmRequired ?? Boolean(cmd.mutating),
         mutating: Boolean(cmd.mutating),
         flags: cmd.flags,
     };

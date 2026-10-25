@@ -16,14 +16,16 @@ describe('cli color (WW-126)', () => {
         expect(shouldColorStream(stream, { json: true })).toBe(false);
     });
 
-    it('colors FAIL/OK/SKIP without changing text', () => {
-        const red = colorizeLogLine('FAIL push', true);
-        expect(red).toContain('FAIL push');
-        expect(red).not.toBe('FAIL push');
-        const ok = colorizeLogLine('line OK done', true);
-        expect(ok).toContain('OK');
-        const skip = colorizeLogLine('SKIP bump', true);
-        expect(skip).toContain('SKIP bump');
+    it('colors FAIL/OK/SKIP token only (rest plain, like Vitest passed)', () => {
+        const green = '\x1b[32m';
+        const red = '\x1b[31m';
+        const yellow = '\x1b[33m';
+        const reset = '\x1b[0m';
+        expect(colorizeLogLine('OK repo: pushed', true)).toBe(`${green}OK${reset} repo: pushed`);
+        expect(colorizeLogLine('FAIL push', true)).toBe(`${red}FAIL${reset} push`);
+        expect(colorizeLogLine('SKIP bump', true)).toBe(`${yellow}SKIP${reset} bump`);
+        // 非行首 OK 不着色
+        expect(colorizeLogLine('line OK done', true)).toBe('line OK done');
     });
 
     it('未知工具 gets error color without prefix injection', () => {

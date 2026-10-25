@@ -31,14 +31,7 @@ export function registerWorkspaceTools(opts: RegisterWorkspaceToolsOptions = {})
     const allExtensions = [squashBumpsExtension, herePushExtension, ...(opts.extensions ?? [])];
     setWtPortalExtensions(allExtensions);
     const extIds = allExtensions.map((e) => e.id);
-    const mutatingToolIds = new Set([
-        'pull',
-        'push',
-        'bump-sdk',
-        'here-push',
-        'remote',
-        'squash-bumps',
-    ]);
+    const mutatingToolIds = new Set(['pull', 'push', 'bump-sdk', 'here-push', 'squash-bumps']);
     const directCommands = WORKSPACE_CATALOG.map((s) => ({
         name: s.id,
         summary: s.summary,

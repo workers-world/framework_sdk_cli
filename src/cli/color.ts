@@ -80,17 +80,41 @@ function levelForLine(line: string): 'error' | 'warn' | 'ok' | 'debug' | 'info' 
     return 'info';
 }
 
+/** 状态前缀（OK / FAIL / SKIP / WARN）只染词本身，其余保持默认色（对齐 Vitest passed）。 */
+function colorizeStatusPrefix(line: string, token: string, color: string): string {
+    const t = line.trimStart();
+    if (!t.startsWith(token)) {
+        return `${color}${line}${RESET}`;
+    }
+    const lead = line.slice(0, line.length - t.length);
+    const rest = t.slice(token.length);
+    return `${lead}${color}${token}${RESET}${rest}`;
+}
+
 export function colorizeLogLine(line: string, enableColor: boolean): string {
     if (!enableColor) {
         return line;
     }
     switch (levelForLine(line)) {
-        case 'error':
+        case 'error': {
+            const t = line.trimStart();
+            if (/^FAIL\b/.test(t)) {
+                return colorizeStatusPrefix(line, 'FAIL', RED);
+            }
             return `${RED}${line}${RESET}`;
-        case 'warn':
+        }
+        case 'warn': {
+            const t = line.trimStart();
+            if (/^SKIP\b/.test(t)) {
+                return colorizeStatusPrefix(line, 'SKIP', YELLOW);
+            }
+            if (/^WARN\b/.test(t)) {
+                return colorizeStatusPrefix(line, 'WARN', YELLOW);
+            }
             return `${YELLOW}${line}${RESET}`;
+        }
         case 'ok':
-            return `${GREEN}${line}${RESET}`;
+            return colorizeStatusPrefix(line, 'OK', GREEN);
         case 'debug':
             return `${GRAY}${line}${RESET}`;
         default:
