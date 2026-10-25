@@ -155,7 +155,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
                 name: c.name,
                 summary: c.summary,
                 mutating: Boolean(c.mutating),
-                confirmRequired: Boolean(c.mutating),
+                confirmRequired: c.confirmRequired ?? Boolean(c.mutating),
                 ...(c.usage ? { usage: c.usage } : {}),
                 ...(c.flags?.length ? { flags: c.flags } : {}),
             })),

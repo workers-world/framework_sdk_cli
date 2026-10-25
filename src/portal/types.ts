@@ -28,6 +28,8 @@ export interface ToolCommand {
     summary: string;
     /** 写操作须 --confirm；发现索引用 */
     mutating?: boolean;
+    /** 覆盖 schema confirmRequired（默认 = mutating）；staging-write 可 mutating=true + confirmRequired=false */
+    confirmRequired?: boolean;
     /** 用法行（`ww <tool> <cmd> --help` / schema） */
     usage?: string;
     flags?: CommandFlagSpec[];
