@@ -27,18 +27,18 @@ export function shouldColorStream(
     if (process.env.NO_COLOR != null && process.env.NO_COLOR !== '') {
         return false;
     }
-    if (process.env.WW_NO_COLOR != null && process.env.WW_NO_COLOR !== '') {
-        return false;
-    }
-    if (process.env.TERM === 'dumb') {
-        return false;
-    }
     const forced = opts?.forceColor ?? forceColorDecision();
     if (forced === false) {
         return false;
     }
     if (forced === true) {
         return true;
+    }
+    if (process.env.WW_NO_COLOR != null && process.env.WW_NO_COLOR !== '') {
+        return false;
+    }
+    if (process.env.TERM === 'dumb') {
+        return false;
     }
     const tty = (stream as NodeJS.WriteStream & { isTTY?: boolean }).isTTY;
     return Boolean(tty);
