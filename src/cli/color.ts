@@ -27,6 +27,12 @@ export function shouldColorStream(
     if (process.env.NO_COLOR != null && process.env.NO_COLOR !== '') {
         return false;
     }
+    if (process.env.WW_NO_COLOR != null && process.env.WW_NO_COLOR !== '') {
+        return false;
+    }
+    if (process.env.TERM === 'dumb') {
+        return false;
+    }
     const forced = opts?.forceColor ?? forceColorDecision();
     if (forced === false) {
         return false;
@@ -96,6 +102,26 @@ export function colorizeLogLine(line: string, enableColor: boolean): string {
         default:
             return line;
     }
+}
+
+export function hintLine(
+    line: string,
+    stream: NodeJS.WritableStream,
+    opts?: { json?: boolean },
+): string {
+    const enable = shouldColorStream(stream, { json: opts?.json });
+    if (!enable || !line.includes('ww:')) {
+        return line;
+    }
+    return `${YELLOW}${line.replace(/\n$/, '')}${RESET}\n`;
+}
+
+export function warnLine(line: string, stream: NodeJS.WritableStream, json = false): string {
+    const enable = shouldColorStream(stream, { json });
+    if (!enable) {
+        return line;
+    }
+    return `${YELLOW}${line}${RESET}`;
 }
 
 export function colorizeStatusLine(

@@ -9,8 +9,11 @@
  * - search/    门户级 search 引擎
  */
 export * from './argv/index.js';
+export * from './check/index.js';
+export * from './cli/color.js';
 export * from './envelope/index.js';
 export * from './http/index.js';
 export * from './portal/index.js';
 export * from './search/index.js';
+export * from './update/index.js';
 export * from './workspace/index.js';

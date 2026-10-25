@@ -5,8 +5,10 @@ describe('writeEnvelope TTY colors (WW-126)', () => {
     it('colors ok line on stderr when TTY', () => {
         const prevNoColor = process.env.NO_COLOR;
         const prevForce = process.env.FORCE_COLOR;
+        const prevTerm = process.env.TERM;
         delete process.env.NO_COLOR;
         delete process.env.FORCE_COLOR;
+        process.env.TERM = 'xterm-256color';
         const stderr: string[] = [];
         const errStream = {
             isTTY: true,
@@ -35,6 +37,11 @@ describe('writeEnvelope TTY colors (WW-126)', () => {
                 delete process.env.FORCE_COLOR;
             } else {
                 process.env.FORCE_COLOR = prevForce;
+            }
+            if (prevTerm === undefined) {
+                delete process.env.TERM;
+            } else {
+                process.env.TERM = prevTerm;
             }
         }
         const esc = String.fromCharCode(27);
