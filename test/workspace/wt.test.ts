@@ -72,7 +72,9 @@ describe('ww wt workspace tools (WW-126)', () => {
         expect(push?.mutating).toBe(true);
         expect(bump?.mutating).toBe(true);
         expect(herePush?.mutating).toBe(true);
-        expect(remote?.mutating).toBe(false);
+        const squash = wt?.commands.find((c) => c.name === 'squash-bumps');
+        expect(remote?.mutating).toBe(true);
+        expect(squash?.mutating).toBe(true);
         expect(cloc?.mutating).toBe(false);
     });
 

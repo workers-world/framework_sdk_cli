@@ -14,6 +14,8 @@ export const EXIT = {
     AUTH: 4,
     /** 网络 / 5xx（可重试） */
     RETRYABLE: 5,
+    /** 自检未通过（ww doctor） */
+    DOCTOR: 6,
     /** 未知工具 / command not found（wt 兼容） */
     NOT_FOUND: 127,
 } as const;

@@ -1,6 +1,6 @@
 {
   "name": "framework_sdk_cli",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Workers-World Agent CLI 基建：进程信封、门户 runPortal、confirm、WorkerIo 映射（无业务命令）",
   "type": "module",
   "license": "UNLICENSED",
@@ -43,6 +43,18 @@
     "./workspace": {
       "import": "./dist/workspace/index.js",
       "types": "./dist/workspace/index.d.ts"
+    },
+    "./workspace/portal-entry": {
+      "import": "./dist/workspace/portal-entry.js",
+      "types": "./dist/workspace/portal-entry.d.ts"
+    },
+    "./check": {
+      "import": "./dist/check/index.js",
+      "types": "./dist/check/index.d.ts"
+    },
+    "./update": {
+      "import": "./dist/update/index.js",
+      "types": "./dist/update/index.d.ts"
     },
     "./package.json": "./package.json"
   },
