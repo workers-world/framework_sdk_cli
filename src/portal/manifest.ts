@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const SDK_API_VERSION = '0.2.3';
+export const SDK_API_VERSION = '0.2.4';
 
 export const PORTAL_RESERVED_TOOL_IDS = new Set([
     'list',
