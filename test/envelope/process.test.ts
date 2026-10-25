@@ -17,6 +17,11 @@ describe('process envelope', () => {
         expect(e.error?.message).toContain('--confirm --json');
         expect(e.meta.exit_code).toBe(EXIT.USAGE);
         expect(e.data).toEqual({ preview: { title: 't' } });
+        expect(e.error?.fix).toEqual({
+            kind: 'rerun',
+            command: 'ww pgreq issue --confirm --json',
+            flag: 'confirm',
+        });
     });
 
     it('mapWorkerIo maps preview type to NEED_CONFIRM', () => {
@@ -45,6 +50,16 @@ describe('process envelope', () => {
             rawText: '',
         });
         expect(e.meta.exit_code).toBe(EXIT.AUTH);
+    });
+
+    it('mapWorkerIo omits HTML from error.message when envelope is empty', () => {
+        const e = mapWorkerIoToProcess('ww desk drafts list', {
+            status: 403,
+            envelope: null,
+            rawText: '<!DOCTYPE html><html><body>Cloudflare Access</body></html>',
+        });
+        expect(e.error?.message?.toLowerCase()).not.toContain('<html');
+        expect(e.error?.message).toContain('non-JSON body omitted');
     });
 
     it('errorEnvelope unknown is not retryable', () => {

@@ -7,11 +7,27 @@ import {
     sideEffectsForExit,
 } from './exit.js';
 
+/** 机器可读修复提示（additive；--json 消费者可忽略未知字段）。 */
+export interface ProcessErrorFix {
+    kind: 'path' | 'flag' | 'rerun' | 'env';
+    path?: string;
+    flag?: string;
+    command?: string;
+    env?: string[];
+}
+
+export interface ProcessError {
+    code: string;
+    message: string;
+    details?: unknown;
+    fix?: ProcessErrorFix;
+}
+
 /** 进程信封（CLI Agent Spec ResponseEnvelope 子集）。stdout 唯一结构化出口。 */
 export interface ProcessEnvelope<TData = unknown> {
     ok: boolean;
     data: TData | null;
-    error: { code: string; message: string; details?: unknown } | null;
+    error: ProcessError | null;
     warnings: string[];
     meta: {
         exit_code: ExitCode;
@@ -46,7 +62,7 @@ export function okEnvelope<TData>(
 export function errorEnvelope(
     command: string,
     code: ExitCode,
-    error: { code: string; message: string; details?: unknown },
+    error: ProcessError,
     opts?: { data?: unknown; warnings?: string[]; meta?: Record<string, unknown> },
 ): ProcessEnvelope {
     return {
@@ -75,7 +91,16 @@ export function needConfirmEnvelope(
     const base = message.includes('--confirm --json')
         ? message
         : `${message.replace(/\s+$/, '')} Re-run: ${rerun}`;
-    return errorEnvelope(command, EXIT.USAGE, { code: 'NEED_CONFIRM', message: base }, { data });
+    return errorEnvelope(
+        command,
+        EXIT.USAGE,
+        {
+            code: 'NEED_CONFIRM',
+            message: base,
+            fix: { kind: 'rerun', command: rerun, flag: 'confirm' },
+        },
+        { data },
+    );
 }
 
 export function writeEnvelope(
