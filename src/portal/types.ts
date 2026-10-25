@@ -16,11 +16,23 @@ export interface PortalContext {
     stderr?: NodeJS.WritableStream;
 }
 
+export interface CommandFlagSpec {
+    name: string;
+    description: string;
+    kind?: 'option' | 'boolean';
+    required?: boolean;
+}
+
 export interface ToolCommand {
     name: string;
     summary: string;
     /** 写操作须 --confirm；发现索引用 */
     mutating?: boolean;
+    /** 覆盖 schema confirmRequired（默认 = mutating）；staging-write 可 mutating=true + confirmRequired=false */
+    confirmRequired?: boolean;
+    /** 用法行（`ww <tool> <cmd> --help` / schema） */
+    usage?: string;
+    flags?: CommandFlagSpec[];
     handler: CommandHandler;
 }
 
@@ -42,4 +54,6 @@ export interface SearchMatch {
     summary: string;
     score: number;
     mutating?: boolean;
+    /** 建议下一步完整命令（含 --json；写操作含 --confirm） */
+    suggested?: string;
 }
