@@ -8,7 +8,10 @@ import {
 import type { FetchBearerResult } from './bearer.js';
 
 function looksLikeHtml(text: string): boolean {
-    const sample = String(text ?? '').trim().slice(0, 800).toLowerCase();
+    const sample = String(text ?? '')
+        .trim()
+        .slice(0, 800)
+        .toLowerCase();
     if (!sample) {
         return false;
     }
