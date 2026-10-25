@@ -23,11 +23,15 @@ export interface CommandFlagSpec {
     required?: boolean;
 }
 
+export type CommandSideEffects = 'none' | 'local' | 'remote';
+
 export interface ToolCommand {
     name: string;
     summary: string;
     /** 写操作须 --confirm；发现索引用 */
     mutating?: boolean;
+    sideEffects?: CommandSideEffects;
+    confirmFlag?: '--confirm' | '--apply';
     /** 用法行（`ww <tool> <cmd> --help` / schema） */
     usage?: string;
     flags?: CommandFlagSpec[];
@@ -43,6 +47,10 @@ export interface ToolRegistration {
     commands: ToolCommand[];
     /** `ww <tool>` 无子命令时调用（替代默认 help），如 wt 交互菜单 */
     defaultHandler?: CommandHandler;
+    /** `help` 子命令接管工具级 --help */
+    delegateToolHelpToHelpCommand?: boolean;
+    /** 子命令 --help 交给 handler（非通用 schema help） */
+    delegateCommandHelpToHandler?: boolean;
 }
 
 export interface SearchMatch {

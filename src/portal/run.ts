@@ -1,5 +1,12 @@
 import { hasJsonFlag, parseNamedArgs } from '../argv/index.js';
 import {
+    checksHaveFailure,
+    discoverIssueChecks,
+    formatDoctorHuman,
+    runChecks,
+} from '../check/index.js';
+import { passiveNotify } from '../check/passive.js';
+import {
     EXIT,
     errorEnvelope,
     okEnvelope,
@@ -9,12 +16,15 @@ import {
 import { ensureDotEnvLoaded } from '../http/load-dotenv.js';
 import { DEFAULT_SEARCH_LIMIT, searchTools } from '../search/index.js';
 import { buildCommandHelp, commandSchema } from './command-meta.js';
+import { getPortalChecks } from './discover-registry.js';
+import { getExtraChecks, getPortalHooks, getPortalUpdateHandler } from './hooks.js';
 import {
     clearRegisteredTools,
     getRegisteredTool,
     listRegisteredTools,
     registerTool,
 } from './registry.js';
+import { reservedToolsForList } from './reserved-meta.js';
 import type { PortalContext } from './types.js';
 import { isPortalVersionArgv, runPortalVersionCommand } from './version-info.js';
 
@@ -110,11 +120,23 @@ function finish(result: ProcessEnvelope, opts: RunPortalOptions, json: boolean):
  * 门户入口：ww list / help / search / <tool> <cmd>。
  * 非 TTY 或 --json：只打进程信封到 stdout。
  */
+function commandSideEffects(c: { mutating?: boolean; sideEffects?: string }): string {
+    if (c.sideEffects) {
+        return c.sideEffects;
+    }
+    return c.mutating ? 'remote' : 'none';
+}
+
+function allDoctorChecks(): import('../check/types.js').SelfCheck[] {
+    return [...getPortalChecks(), ...getExtraChecks(), ...discoverIssueChecks()];
+}
+
 export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnvelope> {
     ensureDotEnvLoaded();
     const portal = opts.portal ?? 'ww';
     const argv = opts.argv ?? process.argv.slice(2);
     const stdoutStream = opts.stdout ?? process.stdout;
+    const stderrStream = opts.stderr ?? process.stderr;
     const json =
         hasJsonFlag(argv) || !(stdoutStream as NodeJS.WriteStream & { isTTY?: boolean }).isTTY;
     const { positional } = parseNamedArgs(argv);
@@ -124,6 +146,19 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         stdout: opts.stdout,
         stderr: opts.stderr,
     };
+
+    const prerun = getPortalHooks().prerun;
+    if (prerun) {
+        await prerun({ argv, portal });
+    } else {
+        await passiveNotify({
+            argv,
+            checks: allDoctorChecks(),
+            ctx: { env: process.env, json, portalRoot: undefined },
+            stdout: stdoutStream,
+            stderr: stderrStream,
+        });
+    }
 
     const head = positional[0];
 
@@ -151,16 +186,79 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
             id: t.id,
             title: t.title,
             summary: t.summary,
-            commands: t.commands.map((c) => ({
-                name: c.name,
-                summary: c.summary,
-                mutating: Boolean(c.mutating),
-                confirmRequired: Boolean(c.mutating),
-                ...(c.usage ? { usage: c.usage } : {}),
-                ...(c.flags?.length ? { flags: c.flags } : {}),
-            })),
+            commands: t.commands.map((c) => {
+                const se = commandSideEffects(c);
+                const mutating = se !== 'none';
+                return {
+                    name: c.name,
+                    summary: c.summary,
+                    sideEffects: se,
+                    mutating,
+                    confirmRequired: mutating,
+                    ...(c.confirmFlag ? { confirmFlag: c.confirmFlag } : {}),
+                    ...(c.usage ? { usage: c.usage } : {}),
+                    ...(c.flags?.length ? { flags: c.flags } : {}),
+                };
+            }),
         }));
-        return finish(okEnvelope(`${portal} list`, { tools }), opts, json);
+        return finish(
+            okEnvelope(`${portal} list`, {
+                tools,
+                reserved: reservedToolsForList(),
+            }),
+            opts,
+            json,
+        );
+    }
+
+    if (head === 'doctor') {
+        const tail = argv.slice(argv.indexOf('doctor') + 1);
+        const tailParsed = parseNamedArgs(tail);
+        if (tailParsed.flags.has('list-checks')) {
+            const ids = allDoctorChecks().map((c) => c.id);
+            return finish(okEnvelope(`${portal} doctor`, { checks: ids }), opts, json);
+        }
+        const filterIds = tailParsed.positional.length > 0 ? tailParsed.positional : undefined;
+        const items = await runChecks(
+            allDoctorChecks(),
+            {
+                env: process.env,
+                json,
+            },
+            { ids: filterIds },
+        );
+        const fail = checksHaveFailure(items);
+        const exitCode = fail ? EXIT.DOCTOR : EXIT.OK;
+        if (!json) {
+            formatDoctorHuman(items, stderrStream, json);
+        }
+        const env = fail
+            ? errorEnvelope(
+                  `${portal} doctor`,
+                  exitCode,
+                  { code: 'DOCTOR_FAILED', message: 'one or more checks failed' },
+                  { data: { checks: items } },
+              )
+            : okEnvelope(`${portal} doctor`, { checks: items });
+        return finish(env, opts, json);
+    }
+
+    if (head === 'update') {
+        const handler = getPortalUpdateHandler();
+        if (!handler) {
+            return finish(
+                errorEnvelope(`${portal} update`, EXIT.USAGE, {
+                    code: 'UPDATE_NOT_CONFIGURED',
+                    message:
+                        'portal update handler not registered; use ww update via bin bootstrap',
+                }),
+                opts,
+                json,
+            );
+        }
+        const tail = argv.slice(argv.indexOf('update') + 1);
+        const result = await handler(tail, ctx);
+        return finish(result, opts, json);
     }
 
     if (head === 'schema') {
@@ -280,7 +378,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         toolParsed.flags.has('h');
 
     const toolHelpCmd = tool.commands.find((c) => c.name === 'help');
-    const wtPortalHelp = tool.id === 'wt' && toolHelpCmd;
+    const toolHelpDelegates = Boolean(tool.delegateToolHelpToHelpCommand && toolHelpCmd);
 
     const finishGenericToolHelp = (): ProcessEnvelope => {
         const text = helpText(tool.id);
@@ -295,7 +393,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         return finish(okEnvelope(`${portal} help ${tool.id}`, { help: text }), opts, json);
     };
 
-    if (toolHelpFlag && !tCmd && wtPortalHelp) {
+    if (toolHelpFlag && !tCmd && toolHelpDelegates && toolHelpCmd) {
         const result = await toolHelpCmd.handler([], { ...ctx, toolId: tool.id });
         return finish(result, opts, json);
     }
@@ -309,7 +407,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
     }
 
     if (tCmd === 'help' || tCmd === '--help' || tCmd === '-h') {
-        if (wtPortalHelp) {
+        if (toolHelpDelegates && toolHelpCmd) {
             const helpArgs = tCmd === 'help' ? toolParsed.positional.slice(1) : [];
             const result = await toolHelpCmd.handler(helpArgs, { ...ctx, toolId: tool.id });
             return finish(result, opts, json);
@@ -344,7 +442,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         restParsed.flags.has('h');
 
     if (cmdHelpFlag) {
-        if (tool.id === 'wt') {
+        if (tool.delegateCommandHelpToHandler) {
             const result = await cmd.handler(rest, { ...ctx, toolId: tool.id });
             return finish(result, opts, json);
         }
