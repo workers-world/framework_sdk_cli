@@ -62,6 +62,22 @@ describe('process envelope', () => {
         expect(e.error?.message).toContain('non-JSON body omitted');
     });
 
+    it('mapWorkerIo treats Access login HTML via host URL, not path substring', () => {
+        const withHost = mapWorkerIoToProcess('ww desk drafts list', {
+            status: 403,
+            envelope: null,
+            rawText: '{"err":"see https://team.cloudflareaccess.com/cdn-cgi/access/login"}',
+        });
+        expect(withHost.error?.message).toContain('non-JSON body omitted');
+
+        const pathOnly = mapWorkerIoToProcess('ww desk drafts list', {
+            status: 403,
+            envelope: { wwerror: { code: 'X', message: 'evil.com/cloudflareaccess.com/foo' } },
+            rawText: '',
+        });
+        expect(pathOnly.error?.message).toBe('evil.com/cloudflareaccess.com/foo');
+    });
+
     it('errorEnvelope unknown is not retryable', () => {
         const e = errorEnvelope('ww', EXIT.UNKNOWN, { code: 'X', message: 'y' });
         expect(e.meta.retryable).toBe(false);
