@@ -45,6 +45,13 @@ jobs:
             echo "version=${{ github.event.registry_package.version }}" >> "$GITHUB_OUTPUT"
           fi
 
+      # npx 只把包放进 npx cache，ESM import 从脚本目录向上找不到它。
+      # 装到脚本旁的 node_modules，bare specifier 才能解析（与 ww 仓同修法）。
+      - name: Install R2 client
+        run: |
+          set -euo pipefail
+          npm install --prefix .github/scripts --no-save --no-package-lock @aws-sdk/client-s3@3.758.0
+
       - name: Sync tarball to R2
         env:
           PACKAGE_NAME: ${{ steps.coords.outputs.name }}
@@ -61,5 +68,4 @@ jobs:
             echo "::error::WW_ARTIFACTS_R2_BUCKET repo variable is not set"
             exit 1
           fi
-          npx --yes @aws-sdk/client-s3@3.758.0
           node .github/scripts/sync-published-package-to-r2.mjs
