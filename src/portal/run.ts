@@ -13,7 +13,7 @@ import {
     type ProcessEnvelope,
     writeEnvelope,
 } from '../envelope/index.js';
-import { ensureDotEnvLoaded } from '../http/load-dotenv.js';
+import { ensureDotEnvLoaded } from '../http/index.js';
 import { DEFAULT_SEARCH_LIMIT, searchTools } from '../search/index.js';
 import { buildCommandHelp, commandSchema } from './command-meta.js';
 import { getPortalChecks } from './discover-registry.js';

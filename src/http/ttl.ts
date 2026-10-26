@@ -7,7 +7,7 @@ export function parseTtlToMs(
     if (v === '0') {
         return { ok: false, error: 'ttl 0 is not allowed on device login' };
     }
-    const m = /^(\d+)(s|m|h|d)$/i.exec(v);
+    const m = /^(\d+)([smhd])$/i.exec(v);
     if (!m?.[1] || !m[2]) {
         return { ok: false, error: 'ttl must be like 7d, 30d, 12h' };
     }
