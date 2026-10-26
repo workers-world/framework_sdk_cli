@@ -17,7 +17,8 @@ export default defineConfig({
     dts: true,
     sourcemap: true,
     clean: true,
-    splitting: false,
+    // Share portal/registry (and peers) across entry points — portal-entry must not get a private Map (#34).
+    splitting: true,
     treeshake: true,
     target: 'node20',
 });
