@@ -90,7 +90,7 @@ export function needConfirmEnvelope(
     const rerun = (opts?.rerun ?? `${command} --confirm --json`).trim();
     const base = message.includes('--confirm --json')
         ? message
-        : `${message.replace(/\s+$/, '')} Re-run: ${rerun}`;
+        : `${message.trimEnd()} Re-run: ${rerun}`;
     return errorEnvelope(
         command,
         EXIT.USAGE,

@@ -7,6 +7,33 @@ import {
 } from '../envelope/index.js';
 import type { FetchBearerResult } from './bearer.js';
 
+function hostIsCloudflareAccess(hostname: string): boolean {
+    const host = hostname.toLowerCase();
+    return host === 'cloudflareaccess.com' || host.endsWith('.cloudflareaccess.com');
+}
+
+/** True when text contains an absolute URL whose host is Cloudflare Access (not a path substring). */
+function authorityHost(authorityPart: string): string {
+    const authority = authorityPart.split('@').pop() ?? '';
+    return authority.split(':')[0] ?? '';
+}
+
+function sampleReferencesCloudflareAccessHost(text: string): boolean {
+    const urlRe = /https?:\/\/([^/?#\s]+)/gi;
+    for (const match of text.matchAll(urlRe)) {
+        if (hostIsCloudflareAccess(authorityHost(match[1]))) {
+            return true;
+        }
+    }
+    const schemeRelativeRe = /\/\/([^/?#\s]+)/g;
+    for (const match of text.matchAll(schemeRelativeRe)) {
+        if (hostIsCloudflareAccess(authorityHost(match[1]))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function looksLikeHtml(text: string): boolean {
     const sample = String(text ?? '')
         .trim()
@@ -19,7 +46,7 @@ function looksLikeHtml(text: string): boolean {
         sample.startsWith('<!doctype') ||
         sample.startsWith('<html') ||
         sample.includes('<html') ||
-        sample.includes('cloudflareaccess.com') ||
+        sampleReferencesCloudflareAccessHost(sample) ||
         sample.includes('cf-access-login')
     );
 }
