@@ -89,9 +89,7 @@ export async function passiveNotify(options: {
         }
     }
 
-    const items = [...localItems, ...networkItems].filter(
-        (c) => c.status === 'warn' || c.status === 'fail',
-    );
+    const items = [...localItems, ...networkItems].filter((c) => c.status === 'fail');
     if (items.length === 0) {
         return { ran: true };
     }
