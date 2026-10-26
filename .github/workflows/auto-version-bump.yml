@@ -1,4 +1,4 @@
-# master 上用户可见变更合入后自动 patch+1 package.json，再触发 ci-publish 发新 Packages 版。
+# master 上用户可见变更合入后自动 patch+1 package.json，经 destin PR 合入（勿直推 master），再经 release→master 触发 ci-publish。
 # 对齐 worker-actions release-actions-bundle：paths 门控 + commit subject [skip version-bump] 防循环。
 # 见 README「自动 semver」；ww#47 / PGREQ20261017000024
 name: Auto version bump
@@ -67,6 +67,7 @@ jobs:
       )
     permissions:
       contents: write
+      pull-requests: write
       packages: read
     steps:
       - uses: actions/checkout@v7
@@ -80,7 +81,7 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: "@workers-world"
 
-      - name: Resolve and apply semver bump
+      - name: Resolve semver bump
         id: bump
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -88,7 +89,7 @@ jobs:
           INPUT_LEVEL: ${{ inputs.bump_level }}
         run: |
           set -euo pipefail
-          args=(node .github/scripts/run-auto-version-bump.mjs --write)
+          args=(node .github/scripts/run-auto-version-bump.mjs)
           if [ -n "${INPUT_VERSION}" ]; then
             args+=(--explicit="${INPUT_VERSION}")
           else
@@ -106,15 +107,69 @@ jobs:
           echo "bumped=true" >> "$GITHUB_OUTPUT"
           echo "next=${next}" >> "$GITHUB_OUTPUT"
 
-      - name: Commit and push bump
+      - name: Push version bump PR to destin
         if: steps.bump.outputs.bumped == 'true'
         env:
+          GH_TOKEN: ${{ secrets.WORKERS_WORLD_GHA_TOKEN || secrets.GITHUB_TOKEN }}
           PUSH_TOKEN: ${{ secrets.WORKERS_WORLD_GHA_TOKEN || secrets.GITHUB_TOKEN }}
           NEXT: ${{ steps.bump.outputs.next }}
+          DESTIN: ${{ github.event.repository.default_branch }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="bot/framework_sdk_cli-version-bump-v${NEXT}"
+          COMMIT_MSG="chore: release framework_sdk_cli v${NEXT} [skip version-bump]"
+          PR_TITLE="chore: release framework_sdk_cli v${NEXT} [skip version-bump]"
+
+          git fetch origin "${DESTIN}"
+          git checkout -B "${BRANCH}" "origin/${DESTIN}"
+
+          node .github/scripts/run-auto-version-bump.mjs --write --explicit="${NEXT}"
+
           git add package.json
-          git commit -m "chore: release framework_sdk_cli v${NEXT} [skip version-bump]"
-          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:master"
+          if git diff --cached --quiet; then
+            echo "package.json already at v${NEXT} on ${DESTIN}; nothing to commit"
+          else
+            git commit -m "${COMMIT_MSG}"
+          fi
+
+          if [ "$(git rev-list --count "origin/${DESTIN}..HEAD" 2>/dev/null || echo 0)" -eq 0 ]; then
+            echo "No diff vs origin/${DESTIN}; skip push and PR"
+            exit 0
+          fi
+
+          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${REPO}.git"
+          git push -u origin "${BRANCH}" --force-with-lease
+
+          existing="$(gh pr list --repo "${REPO}" --head "${BRANCH}" --base "${DESTIN}" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "${existing}" ]; then
+            echo "Version bump PR already open: #${existing} (${BRANCH} → ${DESTIN})"
+          else
+            gh pr create --repo "${REPO}" \
+              --base "${DESTIN}" \
+              --head "${BRANCH}" \
+              --title "${PR_TITLE}" \
+              --body "$(cat <<EOF
+          ## Auto version bump
+
+          - Trigger: \`${GITHUB_EVENT_NAME}\` on \`${GITHUB_REF_NAME}\`
+          - Target version: \`v${NEXT}\`
+          - Base (destin): \`${DESTIN}\`
+          - Head: \`${BRANCH}\`
+
+          Commit subject 与 PR 标题含 \`[skip version-bump]\`，合入后不会在 master 上再次触发 bump。合入 destin 后请按既有 release 流程将版本带进 master，以触发 \`ci-publish\`。
+          EOF
+          )"
+            echo "Opened version bump PR (${BRANCH} → ${DESTIN})"
+          fi
+
+          {
+            echo "### Version bump PR"
+            echo ""
+            echo "- **Version**: v${NEXT}"
+            echo "- **Branch**: \`${BRANCH}\` → \`${DESTIN}\`"
+            echo "- **Do not push master directly** (ruleset requires PR)"
+          } >> "$GITHUB_STEP_SUMMARY"
