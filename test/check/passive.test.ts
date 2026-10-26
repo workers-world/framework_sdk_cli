@@ -54,6 +54,7 @@ describe('passiveNotify', () => {
             argv: ['list'],
             checks: [warnOnlyCheck],
             ctx: { env: {}, json: false },
+            env: {},
             stdout: TTY,
             stderr,
         });
@@ -75,6 +76,7 @@ describe('passiveNotify', () => {
             argv: ['list'],
             checks: [failCheck],
             ctx: { env: {}, json: false },
+            env: {},
             stdout: TTY,
             stderr,
         });
