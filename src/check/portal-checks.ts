@@ -18,7 +18,7 @@ export function discoverIssueChecks(): SelfCheck[] {
         cost: 'local',
         run() {
             return {
-                status: 'fail',
+                status: 'warn',
                 message: issue.message,
                 fix: { command: 'ww doctor', sideEffects: 'none' },
             };

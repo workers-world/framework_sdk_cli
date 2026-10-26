@@ -7,7 +7,7 @@ Workers-World `ww` 门户与 `framework_sdk_cli` 的契约。验收以本文 MUS
 - **MUST**：工具通过 `ToolManifest`（`apiVersion: ww.tool/v1`）描述元数据；handler 与 manifest 同模块导出。
 - **MUST**：门户 `package.json` 的 `ww.tools` 数组声明加载路径；不得改 `bin/ww.mjs` / `runPortal` 增工具。
 - **MUST**：`ww list` / `help` / `search` / 写闸从 manifest 生成；保留字不可占用。
-- **MUST**：`sdkRange` 不兼容或 manifest 非法时跳过加载，`ww doctor` 报 fail。
+- **MUST**：`sdkRange` 不兼容或 manifest 非法时跳过加载，`ww doctor` 报 **warn**（不导致 doctor 非零退出）；被动 TTY 横幅仅统计 **fail**。
 
 ## 2. 自检查
 
