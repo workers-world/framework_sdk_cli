@@ -1,5 +1,4 @@
-import { setDiscoverIssues } from '../check/portal-checks.js';
-import type { SelfCheck } from '../check/types.js';
+import { type SelfCheck, setDiscoverIssues } from '../check/index.js';
 import type { DiscoverIssue } from './discover.js';
 
 let portalChecks: SelfCheck[] = [];
