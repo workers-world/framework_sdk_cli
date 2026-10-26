@@ -1,8 +1,19 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+
+const repoRoot = join(import.meta.dirname, '../..');
+const distIndexPath = join(repoRoot, 'dist/index.js');
+
+function ensureDistBuilt(): void {
+    if (existsSync(distIndexPath)) {
+        return;
+    }
+    execFileSync('npm', ['run', 'build'], { cwd: repoRoot, stdio: 'inherit' });
+}
 
 /**
  * Regression for dual-registry bundling: portal-entry must call registerTool on the
@@ -14,9 +25,9 @@ describe('loadTools + framework_sdk_cli/workspace/portal-entry', () => {
     let sdk: Sdk;
 
     beforeAll(async () => {
-        const distIndex = pathToFileURL(join(import.meta.dirname, '../../dist/index.js')).href;
-        sdk = await import(distIndex);
-    });
+        ensureDistBuilt();
+        sdk = await import(pathToFileURL(distIndexPath).href);
+    }, 120_000);
 
     afterEach(() => {
         sdk.clearRegisteredTools();
