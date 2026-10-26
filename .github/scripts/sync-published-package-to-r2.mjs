@@ -80,7 +80,21 @@ async function main() {
     const tgzPath = join(tmpdir(), `sync-${version}-${process.pid}.tgz`);
     await download(tarballUrl, tgzPath, token);
 
-    const { S3Client, PutObjectCommand, GetObjectCommand } = await import('@aws-sdk/client-s3');
+    let S3Client;
+    let PutObjectCommand;
+    let GetObjectCommand;
+    try {
+        ({ S3Client, PutObjectCommand, GetObjectCommand } = await import('@aws-sdk/client-s3'));
+    } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error(
+            `::error::cannot load @aws-sdk/client-s3 (${detail}). ` +
+                'Install beside this script first: npm install --prefix .github/scripts ' +
+                '(see .github/scripts/package.json). Do not use npx — the package has no bin ' +
+                'and is not placed on this script\'s ESM resolve path.',
+        );
+        process.exit(1);
+    }
     const client = new S3Client({
         region: 'auto',
         endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
