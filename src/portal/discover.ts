@@ -62,6 +62,9 @@ export async function loadTools(options: {
     portalRoot: string;
     registerOpts?: Record<string, unknown>;
 }): Promise<LoadToolsResult> {
+    // Each load owns its own duplicate-ID window; do not leak across calls.
+    clearDiscoverState();
+
     const portalRoot = options.portalRoot;
     const specs = readPortalTools(portalRoot);
     const loaded: string[] = [];
