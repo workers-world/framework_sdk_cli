@@ -1,4 +1,5 @@
 import { colorizeStatusLine } from '../cli/color.js';
+import { stripTrailingAsciiWhitespace } from '../strings/strip-trailing-ascii-whitespace.js';
 import {
     EXIT,
     type ExitCode,
@@ -90,7 +91,7 @@ export function needConfirmEnvelope(
     const rerun = (opts?.rerun ?? `${command} --confirm --json`).trim();
     const base = message.includes('--confirm --json')
         ? message
-        : `${message.trimEnd()} Re-run: ${rerun}`;
+        : `${stripTrailingAsciiWhitespace(message)} Re-run: ${rerun}`;
     return errorEnvelope(
         command,
         EXIT.USAGE,

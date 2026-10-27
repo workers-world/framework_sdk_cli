@@ -12,24 +12,68 @@ function hostIsCloudflareAccess(hostname: string): boolean {
     return host === 'cloudflareaccess.com' || host.endsWith('.cloudflareaccess.com');
 }
 
-/** True when text contains an absolute URL whose host is Cloudflare Access (not a path substring). */
-function authorityHost(authorityPart: string): string {
-    const authority = authorityPart.split('@').pop() ?? '';
-    return authority.split(':')[0] ?? '';
+function isAuthorityDelimiter(ch: string): boolean {
+    return (
+        ch === '/' ||
+        ch === '?' ||
+        ch === '#' ||
+        ch === ' ' ||
+        ch === '\t' ||
+        ch === '\n' ||
+        ch === '\r'
+    );
 }
 
-function sampleReferencesCloudflareAccessHost(text: string): boolean {
-    const urlRe = /https?:\/\/([^/?#\s]+)/gi;
-    for (const match of text.matchAll(urlRe)) {
-        if (hostIsCloudflareAccess(authorityHost(match[1]))) {
-            return true;
-        }
+function readAuthority(text: string, start: number): string {
+    let end = start;
+    while (end < text.length && !isAuthorityDelimiter(text[end])) {
+        end += 1;
     }
-    const schemeRelativeRe = /\/\/([^/?#\s]+)/g;
-    for (const match of text.matchAll(schemeRelativeRe)) {
-        if (hostIsCloudflareAccess(authorityHost(match[1]))) {
-            return true;
+    return text.slice(start, end);
+}
+
+function hostnameFromAuthority(authority: string): string | null {
+    if (!authority) {
+        return null;
+    }
+    try {
+        return new URL(`http://${authority}`).hostname;
+    } catch {
+        return null;
+    }
+}
+
+/** True when text contains an absolute URL whose host is Cloudflare Access (not a path substring). */
+function sampleReferencesCloudflareAccessHost(text: string): boolean {
+    let i = 0;
+    while (i < text.length) {
+        const schemeColon = text.indexOf('://', i);
+        if (schemeColon > i) {
+            const scheme = text.slice(i, schemeColon).toLowerCase();
+            if (scheme === 'http' || scheme === 'https') {
+                const authorityStart = schemeColon + 3;
+                const authority = readAuthority(text, authorityStart);
+                const host = hostnameFromAuthority(authority);
+                if (host && hostIsCloudflareAccess(host)) {
+                    return true;
+                }
+                i = authorityStart + authority.length;
+                continue;
+            }
         }
+
+        if (text[i] === '/' && text[i + 1] === '/' && (i === 0 || text[i - 1] !== ':')) {
+            const authorityStart = i + 2;
+            const authority = readAuthority(text, authorityStart);
+            const host = hostnameFromAuthority(authority);
+            if (host && hostIsCloudflareAccess(host)) {
+                return true;
+            }
+            i = authorityStart + authority.length;
+            continue;
+        }
+
+        i += 1;
     }
     return false;
 }
