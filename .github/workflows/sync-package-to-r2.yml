@@ -45,12 +45,12 @@ jobs:
             echo "version=${{ github.event.registry_package.version }}" >> "$GITHUB_OUTPUT"
           fi
 
-      # npx 只把包放进 npx cache，ESM import 从脚本目录向上找不到它。
-      # 装到脚本旁的 node_modules，bare specifier 才能解析（与 ww 仓同修法）。
+      # 勿用 npx @aws-sdk/client-s3：无 bin，且 cache 不在脚本 ESM resolve 路径上。
+      # 依赖见 .github/scripts/package.json；装到脚本旁的 node_modules 后 bare import 才可解析。
       - name: Install R2 client
         run: |
           set -euo pipefail
-          npm install --prefix .github/scripts --no-save --no-package-lock @aws-sdk/client-s3@3.758.0
+          npm install --prefix .github/scripts --no-package-lock
 
       - name: Sync tarball to R2
         env:
