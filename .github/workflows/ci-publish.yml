@@ -109,11 +109,19 @@ jobs:
           npm publish
           echo "published=true" >> "$GITHUB_OUTPUT"
 
+  # Best-effort：与 tag-release 并列，失败不得阻断已成功 publish 后的打 tag / Release。
+  notify-ww:
+    needs: publish
+    if: >
+      always() &&
+      needs.publish.result == 'success' &&
+      needs.publish.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    steps:
       - name: Notify ww to pin SDK and bump
-        if: steps.publish_pkg.outputs.published == 'true'
         env:
           DISPATCH_TOKEN: ${{ secrets.WORKERS_WORLD_GHA_TOKEN || secrets.GITHUB_TOKEN }}
-          SDK_VERSION: ${{ steps.pkg.outputs.version }}
+          SDK_VERSION: ${{ needs.publish.outputs.version }}
         run: |
           set -euo pipefail
           curl -fsSL -X POST \
@@ -125,6 +133,7 @@ jobs:
           echo "Dispatched framework-sdk-published for ${SDK_VERSION}"
 
   # 新发 Packages 后打 v{semver}，触发 gh-release-on-tag → GitHub Release 页。
+  # 仅 depends on publish（不 needs notify-ww），避免 dispatch 失败挡住 tag/Release。
   tag-release:
     needs: publish
     if: >
