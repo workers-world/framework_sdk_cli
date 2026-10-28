@@ -25,16 +25,20 @@ const bumpLevel = levelArg ? levelArg.split("=")[1] : "patch";
 
 const npmPkg = "@workers-world/framework_sdk_cli";
 let publishedVersion = null;
-const view = spawnSync(
-  "npm",
-  ["view", `${npmPkg}@latest`, "version", "--registry=https://npm.pkg.github.com"],
-  { encoding: "utf8", env: { ...process.env, NODE_AUTH_TOKEN: process.env.NODE_AUTH_TOKEN ?? "" } },
-);
-if (view.status === 0) {
-  publishedVersion = view.stdout.trim();
-} else if (!/404|E404|not found|No match found/i.test(`${view.stderr}${view.stdout}`)) {
-  console.error(view.stderr || view.stdout);
-  process.exit(1);
+// explicit version does not need registry; skip npm view so --write --explicit
+// (Push step) does not depend on NODE_AUTH_TOKEN.
+if (!explicitVersion) {
+  const view = spawnSync(
+    "npm",
+    ["view", `${npmPkg}@latest`, "version", "--registry=https://npm.pkg.github.com"],
+    { encoding: "utf8", env: { ...process.env, NODE_AUTH_TOKEN: process.env.NODE_AUTH_TOKEN ?? "" } },
+  );
+  if (view.status === 0) {
+    publishedVersion = view.stdout.trim();
+  } else if (!/404|E404|not found|No match found/i.test(`${view.stderr}${view.stdout}`)) {
+    console.error(view.stderr || view.stdout);
+    process.exit(1);
+  }
 }
 
 const { next, reason } = resolveNextVersion({

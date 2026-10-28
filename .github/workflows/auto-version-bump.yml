@@ -112,6 +112,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.WORKERS_WORLD_GHA_TOKEN || secrets.GITHUB_TOKEN }}
           PUSH_TOKEN: ${{ secrets.WORKERS_WORLD_GHA_TOKEN || secrets.GITHUB_TOKEN }}
+          # script always runs `npm view` (even with --write --explicit); must override any
+          # polluted repo/org NODE_AUTH_TOKEN (Resolve step already sets GITHUB_TOKEN).
+          NODE_AUTH_TOKEN: ${{ secrets.WORKERS_WORLD_GHA_TOKEN || secrets.GITHUB_TOKEN }}
           NEXT: ${{ steps.bump.outputs.next }}
           DESTIN: ${{ github.event.repository.default_branch }}
           REPO: ${{ github.repository }}
