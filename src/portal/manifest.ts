@@ -186,16 +186,43 @@ function compareSemver(a: SemVer, b: SemVer): number {
     return a.patch - b.patch;
 }
 
+const SDK_PACKAGE_NAME = 'framework_sdk_cli';
+
+/**
+ * Read this package's semver for sdkRange checks.
+ * Walk upward from import.meta.url — tsup splitting may place this module in
+ * dist/chunk-*.js (not dist/portal/), so a fixed ../../package.json can hit the
+ * monorepo meta root (version 0.0.0) instead of this package.
+ */
 export function readSdkVersionFromPackage(): string {
     try {
-        const here = dirname(fileURLToPath(import.meta.url));
-        const pkg = JSON.parse(readFileSync(join(here, '../../package.json'), 'utf8')) as {
-            version?: string;
-        };
-        return pkg.version ?? SDK_API_VERSION;
+        let dir = dirname(fileURLToPath(import.meta.url));
+        for (;;) {
+            try {
+                const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+                    name?: string;
+                    version?: string;
+                };
+                if (
+                    pkg.name === SDK_PACKAGE_NAME &&
+                    typeof pkg.version === 'string' &&
+                    pkg.version.trim()
+                ) {
+                    return pkg.version.trim();
+                }
+            } catch {
+                // keep walking
+            }
+            const parent = join(dir, '..');
+            if (parent === dir) {
+                break;
+            }
+            dir = parent;
+        }
     } catch {
-        return SDK_API_VERSION;
+        // fall through
     }
+    return SDK_API_VERSION;
 }
 
 export function manifestCommandMutating(cmd: ManifestCommand): boolean {
