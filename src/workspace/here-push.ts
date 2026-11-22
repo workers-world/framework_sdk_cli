@@ -117,6 +117,8 @@ function runNpm(
         encoding: 'utf8',
         stdio: inherit ? 'inherit' : ['ignore', 'pipe', 'pipe'],
         env: process.env,
+        // vitest 等长输出可超默认 1MB；不设 maxBuffer 会被 SIGTERM 杀掉误判 CHECK_FAILED
+        maxBuffer: 32 * 1024 * 1024,
     });
     return {
         ok: r.status === 0,
@@ -243,8 +245,12 @@ export const handleWtHerePush: CommandHandler = async (argv, ctx) => {
         wtWriteStderr(ctx, `→ npm run check (${label})\n`);
         const check = runNpm(repoRoot, ['run', 'check'], inherit);
         if (!check.ok) {
-            if (!inherit && check.stderr) {
-                wtWriteStderr(ctx, check.stderr);
+            // 失败输出 stderr + stdout 都要回显（只回显 stderr 会丢 vitest 失败摘要等关键信息）
+            if (!inherit) {
+                const detail = [check.stderr, check.stdout].filter((s) => s.trim()).join('\n');
+                if (detail) {
+                    wtWriteStderr(ctx, `${detail}\n`);
+                }
             }
             return wtErr(
                 ctx,
@@ -263,8 +269,11 @@ export const handleWtHerePush: CommandHandler = async (argv, ctx) => {
         wtWriteStderr(ctx, `→ npm test (${label})\n`);
         const test = runNpm(repoRoot, ['test'], inherit);
         if (!test.ok) {
-            if (!inherit && test.stderr) {
-                wtWriteStderr(ctx, test.stderr);
+            if (!inherit) {
+                const detail = [test.stderr, test.stdout].filter((s) => s.trim()).join('\n');
+                if (detail) {
+                    wtWriteStderr(ctx, `${detail}\n`);
+                }
             }
             return wtErr(
                 ctx,

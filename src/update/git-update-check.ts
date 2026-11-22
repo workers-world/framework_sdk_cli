@@ -77,6 +77,11 @@ function spawnBackgroundRefresh(options: {
         stdio: 'ignore',
         env: { ...options.env, WW_NO_UPDATE_CHECK: '1' },
     });
-    child.on('error', () => {});
+    child.on('error', (err) => {
+        // 后台刷新是尽力而为：spawn 失败（如 dist 产物缺失 ENOENT）只打一行 debug 到 stderr，
+        // 不污染 stdout 的 --json 信封；本次 check 仍按现有缓存走前台判定路径，
+        // 且 refreshRepos 未执行 → attemptedAt 未写 → 下次 check 会自然重试刷新（降级=延后刷新）。
+        console.error(`[ww] update cache refresh spawn failed: ${err.message}`);
+    });
     child.unref();
 }

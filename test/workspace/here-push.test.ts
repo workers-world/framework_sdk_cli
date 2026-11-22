@@ -28,6 +28,8 @@ function initBareRepo(): { root: string; cleanup: () => void } {
     execFileSync('git', ['init', '-b', 'dev_00_01_00'], { cwd: root });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: root });
     execFileSync('git', ['config', 'user.name', 'test'], { cwd: root });
+    // 本机全局 commit.gpgsign=true 会让 git commit 走 gpg 签名（慢、易超时），测试内关闭
+    execFileSync('git', ['config', 'commit.gpgsign', 'false'], { cwd: root });
     writeFileSync(join(root, 'README.md'), 'hello\n');
     writeFileSync(
         join(root, 'package.json'),

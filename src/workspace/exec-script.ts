@@ -134,8 +134,11 @@ export async function runWorkspaceTool(
             stdio: [interactive ? 'inherit' : 'ignore', 'pipe', 'pipe'],
             shell: false,
         });
-        child.stdout.on('data', (c: Buffer) => outWriter.write(c.toString('utf8')));
-        child.stderr.on('data', (c: Buffer) => errWriter.write(c.toString('utf8')));
+        // 用 utf8 解码整个流：按 chunk toString('utf8') 会在 chunk 边界截断多字节字符（如中文）
+        child.stdout.setEncoding('utf8');
+        child.stderr.setEncoding('utf8');
+        child.stdout.on('data', (c: string) => outWriter.write(c));
+        child.stderr.on('data', (c: string) => errWriter.write(c));
         child.on('error', (spawnErr) => {
             resolve({
                 exitCode: 127,

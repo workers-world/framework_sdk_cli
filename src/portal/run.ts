@@ -104,8 +104,13 @@ export interface RunPortalOptions {
     noExit?: boolean;
 }
 
-function finish(result: ProcessEnvelope, opts: RunPortalOptions, json: boolean): ProcessEnvelope {
-    writeEnvelope(result, {
+async function finish(
+    result: ProcessEnvelope,
+    opts: RunPortalOptions,
+    json: boolean,
+): Promise<ProcessEnvelope> {
+    // 等待写排空后再 exit：大信封经管道时同步 process.exit 可能截断尾部输出
+    await writeEnvelope(result, {
         json,
         stdout: opts.stdout,
         stderr: opts.stderr,
@@ -114,6 +119,53 @@ function finish(result: ProcessEnvelope, opts: RunPortalOptions, json: boolean):
         process.exit(result.meta.exit_code);
     }
     return result;
+}
+
+/** handler 运行时兜底：任何抛错（含 SkipFileParseError 等未捕获路径）转 HANDLER_CRASH 信封，不裸崩。
+ *  只构造信封不落盘；由调用点统一 finish 写出，避免写两次。 */
+async function safeHandler(
+    command: string,
+    run: () => Promise<ProcessEnvelope> | ProcessEnvelope,
+): Promise<ProcessEnvelope> {
+    try {
+        return await run();
+    } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        return errorEnvelope(command, EXIT.UNKNOWN, {
+            code: 'HANDLER_CRASH',
+            message: `handler crashed: ${message}`,
+        });
+    }
+}
+
+/**
+ * 第一个位置参数在 argv 中的下标（与 parseNamedArgs 的扫描规则一致：跳过 flags、具名参数及其值）。
+ * 重复 token 时 `argv.indexOf(head) + 1` 会切错位置（如具名参数值与 head 同名），故显式扫描。
+ */
+function firstPositionalIndex(argv: string[]): number {
+    for (let i = 0; i < argv.length; i++) {
+        const a = argv[i];
+        if (a === '--') {
+            // `--` 之后全是位置参数（parseNamedArgs 同语义）
+            return i + 1 < argv.length ? i + 1 : argv.length;
+        }
+        if (a.startsWith('--')) {
+            const eq = a.indexOf('=');
+            if (eq > 2) {
+                continue;
+            }
+            const next = argv[i + 1];
+            if (next != null && !next.startsWith('-')) {
+                i++; // 具名参数值，跳过
+            }
+            continue;
+        }
+        if (a.startsWith('-') && a.length === 2) {
+            continue;
+        }
+        return i;
+    }
+    return argv.length;
 }
 
 /**
@@ -212,7 +264,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
     }
 
     if (head === 'doctor') {
-        const tail = argv.slice(argv.indexOf('doctor') + 1);
+        const tail = argv.slice(firstPositionalIndex(argv) + 1);
         const tailParsed = parseNamedArgs(tail);
         if (tailParsed.flags.has('list-checks')) {
             const ids = allDoctorChecks().map((c) => c.id);
@@ -256,8 +308,8 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
                 json,
             );
         }
-        const tail = argv.slice(argv.indexOf('update') + 1);
-        const result = await handler(tail, ctx);
+        const tail = argv.slice(firstPositionalIndex(argv) + 1);
+        const result = await safeHandler(`${portal} update`, () => handler(tail, ctx));
         return finish(result, opts, json);
     }
 
@@ -307,7 +359,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
     }
 
     if (head === 'search') {
-        const searchTail = argv.slice(argv.indexOf('search') + 1);
+        const searchTail = argv.slice(firstPositionalIndex(argv) + 1);
         const parsed = parseNamedArgs(searchTail);
         const query = parsed.positional.join(' ').trim();
         const limitRaw = parsed.named.limit;
@@ -369,7 +421,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         );
     }
 
-    const toolTail = argv.slice(argv.indexOf(head) + 1);
+    const toolTail = argv.slice(firstPositionalIndex(argv) + 1);
     const toolParsed = parseNamedArgs(toolTail);
     const tCmd = toolParsed.positional[0];
     const toolHelpFlag =
@@ -380,7 +432,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
     const toolHelpCmd = tool.commands.find((c) => c.name === 'help');
     const toolHelpDelegates = Boolean(tool.delegateToolHelpToHelpCommand && toolHelpCmd);
 
-    const finishGenericToolHelp = (): ProcessEnvelope => {
+    const finishGenericToolHelp = async (): Promise<ProcessEnvelope> => {
         const text = helpText(tool.id);
         if (!json) {
             (opts.stderr ?? process.stderr).write(`${text}\n`);
@@ -394,13 +446,18 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
     };
 
     if (toolHelpFlag && !tCmd && toolHelpDelegates && toolHelpCmd) {
-        const result = await toolHelpCmd.handler([], { ...ctx, toolId: tool.id });
+        const result = await safeHandler(`${portal} help ${tool.id}`, () =>
+            toolHelpCmd.handler([], { ...ctx, toolId: tool.id }),
+        );
         return finish(result, opts, json);
     }
 
     if (!tCmd) {
         if (tool.defaultHandler && !toolHelpFlag) {
-            const result = await tool.defaultHandler(toolTail, { ...ctx, toolId: tool.id });
+            const defaultHandler = tool.defaultHandler; // 闭包内收窄
+            const result = await safeHandler(`${portal} ${tool.id}`, () =>
+                defaultHandler(toolTail, { ...ctx, toolId: tool.id }),
+            );
             return finish(result, opts, json);
         }
         return finishGenericToolHelp();
@@ -409,7 +466,9 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
     if (tCmd === 'help' || tCmd === '--help' || tCmd === '-h') {
         if (toolHelpDelegates && toolHelpCmd) {
             const helpArgs = tCmd === 'help' ? toolParsed.positional.slice(1) : [];
-            const result = await toolHelpCmd.handler(helpArgs, { ...ctx, toolId: tool.id });
+            const result = await safeHandler(`${portal} help ${tool.id}`, () =>
+                toolHelpCmd.handler(helpArgs, { ...ctx, toolId: tool.id }),
+            );
             return finish(result, opts, json);
         }
         return finishGenericToolHelp();
@@ -433,8 +492,9 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         );
     }
 
-    const cmdIdx = toolTail.indexOf(tCmd);
-    const rest = cmdIdx >= 0 ? toolTail.slice(cmdIdx + 1) : [];
+    // tCmd = toolParsed.positional[0]，按下标切（toolTail.indexOf(tCmd) 在具名值与命令同名时会切错）
+    const cmdIdx = firstPositionalIndex(toolTail);
+    const rest = cmdIdx < toolTail.length ? toolTail.slice(cmdIdx + 1) : [];
     const restParsed = parseNamedArgs(rest);
     const cmdHelpFlag =
         rest.some((a) => a === '--help' || a === '-h') ||
@@ -443,7 +503,9 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
 
     if (cmdHelpFlag) {
         if (tool.delegateCommandHelpToHandler) {
-            const result = await cmd.handler(rest, { ...ctx, toolId: tool.id });
+            const result = await safeHandler(`${portal} help ${tool.id} ${cmd.name}`, () =>
+                cmd.handler(rest, { ...ctx, toolId: tool.id }),
+            );
             return finish(result, opts, json);
         }
         const { help, flags } = buildCommandHelp(portal, tool, cmd);
@@ -459,6 +521,8 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
         return finish(okEnvelope(`${portal} help ${tool.id} ${cmd.name}`, payload), opts, json);
     }
 
-    const result = await cmd.handler(rest, { ...ctx, toolId: tool.id });
+    const result = await safeHandler(`${portal} ${tool.id} ${cmd.name}`, () =>
+        cmd.handler(rest, { ...ctx, toolId: tool.id }),
+    );
     return finish(result, opts, json);
 }

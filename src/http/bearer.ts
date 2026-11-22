@@ -18,6 +18,8 @@ export interface FetchBearerOptions {
     body?: unknown;
     headers?: Record<string, string>;
     fetchImpl?: typeof fetch;
+    /** 请求超时毫秒数；默认 30_000（fetch 默认无超时，Worker 慢响应会把 CLI 挂死） */
+    timeoutMs?: number;
 }
 
 export interface FetchBearerResult {
@@ -55,10 +57,13 @@ export async function fetchBearer(opts: FetchBearerOptions): Promise<FetchBearer
         headers['Content-Type'] = 'application/json';
         body = JSON.stringify(opts.body);
     }
+    // AbortSignal.timeout：超时由浏览器/Node 原生中断（默认 30s；timeoutMs 覆盖）
+    const signal = AbortSignal.timeout(opts.timeoutMs ?? 30_000);
     const res = await fetchImpl(url, {
         method: opts.method ?? (body ? 'POST' : 'GET'),
         headers,
         body,
+        signal,
     });
     const rawText = await res.text();
     let parsed: unknown = null;
