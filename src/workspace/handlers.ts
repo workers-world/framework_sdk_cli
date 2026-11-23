@@ -63,12 +63,13 @@ function scriptPath(root: string, tool: WorkspaceTool): string {
 }
 
 function printHelpTool(ctx: PortalContext, tool: WorkspaceTool): void {
+    // 执行页只保留摘要 + 指针：场景示例属派生信息，统一收在生成文档
+    // （ww 仓 docs/ww-wt-reference.md，npm run docs:wt 再生成），避免随实现漂移。
     const lines = [
         `${tool.id} — ${tool.title}`,
         tool.summary,
         `script: ${tool.script}`,
-        'examples:',
-        ...tool.examples.map((ex) => `  ${ex}`),
+        '用法与示例: ww 仓 docs/ww-wt-reference.md（生成物，勿手改）',
     ];
     wtWriteStdout(ctx, `${lines.join('\n')}\n`);
 }
@@ -522,10 +523,6 @@ export async function handleWtInteractive(
         const args = argsOrErr;
         if (tool.id === 'remote' && args.length === 0) {
             wtWriteStderr(ctx, 'remote 需要位置参数：ssh | https | cursor | github\n');
-            wtWriteStderr(ctx, 'examples:\n');
-            for (const ex of tool.examples) {
-                wtWriteStderr(ctx, `  ${ex}\n`);
-            }
             return wtErr(ctx, 'menu', EXIT.USAGE, {
                 code: 'USAGE',
                 message: 'remote 需要位置参数：ssh | https | cursor | github',
