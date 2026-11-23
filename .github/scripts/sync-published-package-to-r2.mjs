@@ -1,15 +1,121 @@
 #!/usr/bin/env node
 /**
- * 与 workers-world/ww 仓内同名脚本保持一致（Packages published → R2）。
- * @see https://github.com/workers-world/ww/blob/dev_00_01_00/.github/scripts/sync-published-package-to-r2.mjs
+ * 从 GitHub Packages 拉取已发布 tarball，写入 R2，并合并 manifest.json。
+ * 坐标解析与 workers-world/ww 同源；本仓固定同步 @workers-world/framework_sdk_cli。
+ *
+ * 环境变量（必填）：
+ *   PACKAGE_NAME          如 @workers-world/framework_sdk_cli
+ *   PACKAGE_VERSION       semver
+ *   NODE_AUTH_TOKEN       packages:read
+ *   R2_ACCOUNT_ID
+ *   R2_ACCESS_KEY_ID
+ *   R2_SECRET_ACCESS_KEY
+ *   R2_BUCKET
+ * 可选：
+ *   R2_KEY_PREFIX         对象键前缀（无尾斜杠）
+ *   SYNC_ON_MISSING       skip | fail（默认 fail）。skip 时重试后仍 404 则退出 0，不改 manifest。
  */
 import { spawnSync } from 'node:child_process';
-import { createWriteStream, readFileSync, unlinkSync } from 'node:fs';
+import { createWriteStream, readFileSync, realpathSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { pathToFileURL } from 'node:url';
 
 const REGISTRY = 'https://npm.pkg.github.com';
+const SDK_PACKAGE_NAME = '@workers-world/framework_sdk_cli';
+const NPM_VIEW_ATTEMPTS = 6;
+const NPM_VIEW_RETRY_MS = 4000;
+
+/**
+ * registry_package.name 对 scoped npm 包有时只是短名，scope 在 namespace。
+ * @param {string | undefined} name
+ * @param {string | undefined} namespace
+ */
+export function scopeRegistryPackageName(name, namespace) {
+    const raw = (name ?? '').trim();
+    const ns = (namespace ?? '').trim();
+    if (!raw) {
+        return '';
+    }
+    if (raw.startsWith('@')) {
+        return raw;
+    }
+    if (!ns) {
+        return raw;
+    }
+    return `@${ns}/${raw}`;
+}
+
+/**
+ * 版本在 package_version.version；部分 payload 只填 package_version.name。
+ * 顶层 registry_package.version 不存在。
+ * @param {string | undefined} version
+ * @param {string | undefined} versionName
+ */
+export function registryPackageVersion(version, versionName) {
+    return (version ?? '').trim() || (versionName ?? '').trim();
+}
+
+/**
+ * @param {{
+ *   eventName: string,
+ *   inputPackageName?: string,
+ *   inputPackageVersion?: string,
+ *   registryPackageName?: string,
+ *   registryPackageNamespace?: string,
+ *   registryPackageVersion?: string,
+ *   registryPackageVersionName?: string,
+ *   packageJsonVersion?: string,
+ *   publishJobSucceeded?: boolean,
+ * }} input
+ * @returns {{ skip: boolean, name: string, version: string, onMissing: 'skip' | 'fail', reason: string }}
+ */
+export function resolveSyncTarget(input) {
+    const eventName = input.eventName;
+    if (eventName === 'workflow_dispatch') {
+        const name = (input.inputPackageName ?? '').trim();
+        const version = (input.inputPackageVersion ?? '').trim();
+        if (!name || !version) {
+            throw new Error('workflow_dispatch requires package_name and package_version');
+        }
+        return { skip: false, name, version, onMissing: 'fail', reason: '' };
+    }
+    if (eventName === 'registry_package') {
+        const name = scopeRegistryPackageName(input.registryPackageName, input.registryPackageNamespace);
+        const version = registryPackageVersion(input.registryPackageVersion, input.registryPackageVersionName);
+        if (!name || !version) {
+            throw new Error('registry_package payload missing name or version');
+        }
+        if (name !== SDK_PACKAGE_NAME) {
+            return {
+                skip: true,
+                name,
+                version,
+                onMissing: 'fail',
+                reason: `registry_package ${name} is not ${SDK_PACKAGE_NAME}`,
+            };
+        }
+        return { skip: false, name, version, onMissing: 'fail', reason: '' };
+    }
+    if (eventName === 'workflow_run') {
+        if (!input.publishJobSucceeded) {
+            return {
+                skip: true,
+                name: SDK_PACKAGE_NAME,
+                version: '',
+                onMissing: 'skip',
+                reason: 'CI and Publish job "publish" did not succeed',
+            };
+        }
+        const version = (input.packageJsonVersion ?? '').trim();
+        if (!version) {
+            throw new Error('workflow_run could not read package.json version');
+        }
+        return { skip: false, name: SDK_PACKAGE_NAME, version, onMissing: 'skip', reason: '' };
+    }
+    throw new Error(`unexpected event ${eventName || '(empty)'}`);
+}
 
 function req(name) {
     const v = process.env[name]?.trim();
@@ -30,25 +136,50 @@ function r2TarballKey(packageName, version, keyPrefix) {
     return `${keyPrefix.replace(/\/+$/, '')}/${key}`;
 }
 
+function sleepMs(ms) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function isPackageMissing(text) {
+    return /404|E404|not found|No match found/i.test(text);
+}
+
 function npmViewTarballUrl(pkg, version, token) {
-    const r = spawnSync(
-        'npm',
-        ['view', `${pkg}@${version}`, 'dist.tarball', '--registry', REGISTRY],
-        {
-            encoding: 'utf8',
-            env: { ...process.env, NODE_AUTH_TOKEN: token, npm_config_registry: REGISTRY },
-        },
-    );
-    if (r.status !== 0) {
-        console.error(`::error::npm view failed: ${(r.stderr || r.stdout).trim()}`);
-        process.exit(1);
+    let last = '';
+    for (let attempt = 1; attempt <= NPM_VIEW_ATTEMPTS; attempt++) {
+        const r = spawnSync(
+            'npm',
+            ['view', `${pkg}@${version}`, 'dist.tarball', '--registry', REGISTRY],
+            {
+                encoding: 'utf8',
+                env: { ...process.env, NODE_AUTH_TOKEN: token, npm_config_registry: REGISTRY },
+            },
+        );
+        if (r.status === 0) {
+            const url = r.stdout.trim().split('\n').pop()?.trim();
+            if (!url) {
+                console.error('::error::empty dist.tarball from npm view');
+                process.exit(1);
+            }
+            return url;
+        }
+        last = (r.stderr || r.stdout || '').trim();
+        const missing = isPackageMissing(last);
+        if (!missing || attempt === NPM_VIEW_ATTEMPTS) {
+            if (missing && process.env.SYNC_ON_MISSING === 'skip') {
+                console.log(
+                    `Skip sync: ${pkg}@${version} is not on GitHub Packages (${last.split('\n')[0] || 'not found'})`,
+                );
+                process.exit(0);
+            }
+            console.error(`::error::npm view failed: ${last}`);
+            process.exit(1);
+        }
+        console.log(`npm view ${pkg}@${version} not visible yet (${attempt}/${NPM_VIEW_ATTEMPTS})`);
+        sleepMs(NPM_VIEW_RETRY_MS);
     }
-    const url = r.stdout.trim().split('\n').pop()?.trim();
-    if (!url) {
-        console.error('::error::empty dist.tarball from npm view');
-        process.exit(1);
-    }
-    return url;
+    console.error(`::error::npm view failed: ${last}`);
+    process.exit(1);
 }
 
 async function download(url, dest, token) {
@@ -91,7 +222,7 @@ async function main() {
             `::error::cannot load @aws-sdk/client-s3 (${detail}). ` +
                 'Install beside this script first: npm install --prefix .github/scripts ' +
                 '(see .github/scripts/package.json). Do not use npx — the package has no bin ' +
-                'and is not placed on this script\'s ESM resolve path.',
+                "and is not placed on this script's ESM resolve path.",
         );
         process.exit(1);
     }
@@ -147,7 +278,21 @@ async function main() {
     }
 }
 
-main().catch((e) => {
-    console.error(`::error::${e instanceof Error ? e.message : String(e)}`);
-    process.exit(1);
-});
+function invokedDirectly() {
+    const entry = process.argv[1];
+    if (!entry) {
+        return false;
+    }
+    try {
+        return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+    } catch {
+        return false;
+    }
+}
+
+if (invokedDirectly()) {
+    main().catch((e) => {
+        console.error(`::error::${e instanceof Error ? e.message : String(e)}`);
+        process.exit(1);
+    });
+}
