@@ -62,7 +62,12 @@ function helpText(toolId?: string): string {
             );
             return lines.join('\n');
         }
-        lines.push(`${tool.id} — ${tool.title}`, tool.summary, '', 'Commands:');
+        lines.push(`${tool.id} — ${tool.title}`, tool.summary);
+        if (tool.detail) {
+            // 二级披露：token env / 写闸等细节只出现在这里，顶层 Tools 不印
+            lines.push(tool.detail);
+        }
+        lines.push('', 'Commands:');
         for (const c of tool.commands) {
             const flag = c.mutating ? '  [--confirm]' : '';
             lines.push(`  ww ${tool.id} ${c.name}${flag}  ${c.summary}`);
@@ -87,7 +92,11 @@ function nearestToolIds(input: string, limit = 5): string[] {
             score:
                 (t.id.includes(q) ? 3 : 0) +
                 (t.title.toLowerCase().includes(q) ? 2 : 0) +
-                (t.summary.toLowerCase().includes(q) ? 1 : 0),
+                (t.summary.toLowerCase().includes(q) ? 1 : 0) +
+                // summary 渐进披露瘦身后，命令级打分保住 did-you-mean 召回
+                (t.commands.some((c) => c.name.includes(q) || c.summary.toLowerCase().includes(q))
+                    ? 1
+                    : 0),
         }))
         .filter((x) => x.score > 0)
         .sort((a, b) => b.score - a.score)
@@ -238,6 +247,7 @@ export async function runPortal(opts: RunPortalOptions = {}): Promise<ProcessEnv
             id: t.id,
             title: t.title,
             summary: t.summary,
+            ...(t.detail ? { detail: t.detail } : {}),
             commands: t.commands.map((c) => {
                 const se = commandSideEffects(c);
                 const mutating = se !== 'none';

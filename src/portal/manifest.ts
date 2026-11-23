@@ -39,6 +39,8 @@ export interface ToolManifest {
     id: string;
     title: string;
     summary: string;
+    /** 二级披露（仅 ww help <tool> / list --json），对齐 ToolRegistration.detail */
+    detail?: string;
     keywords?: string[];
     version: string;
     sdkRange: string;

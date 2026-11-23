@@ -43,7 +43,13 @@ export interface ToolCommand {
 export interface ToolRegistration {
     id: string;
     title: string;
+    /** 顶层披露：一句话用途（Tools 列表/搜索均用；勿塞子命令枚举或 token 细节） */
     summary: string;
+    /**
+     * 二级披露：仅 `ww help <tool>` 与 `list --json` 显示（顶层 Tools 不印）。
+     * 放 token env、写闸等细节，对齐 cf cli「顶层一句话、细节在 --help」。
+     */
+    detail?: string;
     /** 额外关键词供 search */
     keywords?: string[];
     commands: ToolCommand[];
