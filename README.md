@@ -32,19 +32,13 @@ npm run check && npm test && npm run build
 
 ## CI / 发版
 
-对齐 `framework_sdk_ui`：`dev_*` → sync-lock + verify；合入 **master** → 自动 semver bump → publish `@workers-world/framework_sdk_cli` + `v*` tag → GitHub Release。
+对齐 `framework_sdk_ui`：`dev_*` → sync-lock + verify；合入 **master** → 按 `package.json` `version` publish `@workers-world/framework_sdk_cli` + `v*` tag → GitHub Release（未 bump 则跳过）。
 
-### 自动 semver（ww#47）
+### 版本语义（对齐 SDK / worker-actions / ww）
 
-Hook 选在 **master `push`**（与 [worker-actions `release-actions-bundle`](https://github.com/workers-world/worker-actions/blob/master/.github/workflows/release-actions-bundle.yml) 一致）：dev 合入 master 后由 [`.github/workflows/auto-version-bump.yml`](.github/workflows/auto-version-bump.yml) 默认 **patch+1** 写回 `package.json`，随后既有 `ci-publish` 发 GitHub Packages、`sync-package-to-r2` 同步 R2。
+**版本权威 = [`package.json`](../package.json) `version`**：在 Release PR（`dev_*` → `master`）里**本地 bump**（patch/minor/major 人工定），随 PR 评审；合入 master 后既有 `ci-publish` 发 GitHub Packages、`sync-package-to-r2` 同步 R2；**未 bump**（该版本已在 Packages 上）→ publish/tag 自动跳过。**无 bot 反应式 bump**：旧 `auto-version-bump.yml`（ww#47，Release 合入后 bot patch+1 写回 `package.json`）已删除。
 
-| 门控 | 说明 |
-|------|------|
-| **paths** | `src/**`、`tsup.config.ts`、`package.json`（不含 `docs/**`、纯 Markdown） |
-| **`[skip version-bump]`** | bump 提交 / PR squash **标题**（commit subject 首行）含该标记则不再 bump，防循环 |
-| **workflow_dispatch** | 可填显式 `version` 或选 `patch` / `minor` / `major` |
-
-新发 SDK 成功后 `ci-publish` 会向 **ww** 发 `repository_dispatch`（`framework-sdk-published`），由 ww 先 pin `framework_sdk_cli` 再 bump ww。跨仓 dispatch 需 org 级 **`WORKERS_WORLD_GHA_TOKEN`**（或等效 PAT，`repo` + 触发 ww workflow）；仅 `GITHUB_TOKEN` 时可能无法 dispatch 到 ww。
+新发 SDK 成功后 `ci-publish` 会向 **ww** 发 `repository_dispatch`（`framework-sdk-published`），由 ww 开 **pin-only** bot PR（升 `framework_sdk_cli` pin + 刷 lock，**不动 ww 版本**，随 ww 下一次 Release PR 发布）。跨仓 dispatch 需 org 级 **`WORKERS_WORLD_GHA_TOKEN`**（或等效 PAT，`repo` + 触发 ww workflow）；仅 `GITHUB_TOKEN` 时可能无法 dispatch 到 ww。
 
 **不发 npmjs.com**；registry 仍为 `publishConfig` 中的 GitHub Packages。
 
