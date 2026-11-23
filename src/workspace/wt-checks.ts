@@ -62,7 +62,9 @@ export function createWtChecks(): SelfCheck[] {
                     return { status: 'ok', message: 'skip 文件不存在（可选）' };
                 }
                 try {
-                    loadSkipFile(path);
+                    // loadSkipFile 接收 workspaceRoot（内部再 skipFilePath），此前误传 path
+                    // （root/.ww-workspace-skip.json 下的同名文件不存在）→ 永远空对象、坏文件测不出来。
+                    loadSkipFile(root);
                     return { status: 'ok', message: 'skip 文件可解析' };
                 } catch {
                     return { status: 'fail', message: 'skip 文件解析失败' };

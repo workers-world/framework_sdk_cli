@@ -12,6 +12,9 @@ export default defineConfig({
         'workspace/portal-entry': 'src/workspace/portal-entry.ts',
         'check/index': 'src/check/index.ts',
         'update/index': 'src/update/index.ts',
+        // 后台刷新 worker（git-update-check.ts spawn 的就是 dist/update/fetch-worker.js）：
+        // 必须进 entry 让 esbuild 打包（fetch-worker import './git-cache.js'，裸 copy 会丢依赖）。
+        'update/fetch-worker': 'src/update/fetch-worker.js',
     },
     format: ['esm'],
     dts: true,

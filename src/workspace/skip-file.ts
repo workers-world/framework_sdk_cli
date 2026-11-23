@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { stripTrailingSlashes } from '../strings/strip-trailing-slashes.js';
 
@@ -72,7 +72,12 @@ export class SkipFileParseError extends Error {
 }
 
 export function saveSkipFile(workspaceRoot: string, data: WorkspaceSkipData): void {
-    writeFileSync(skipFilePath(workspaceRoot), `${JSON.stringify({ skip: data.skip }, null, 2)}\n`);
+    const path = skipFilePath(workspaceRoot);
+    // 原子写（对齐 git-cache.ts 的 tmp+rename 模式）：先写临时文件再 rename，
+    // 避免写入中途被打断留下半截坏 JSON（坏文件会让 loadSkipFile 抛 SkipFileParseError 连累 run）。
+    const tmp = `${path}.${process.pid}.tmp`;
+    writeFileSync(tmp, `${JSON.stringify({ skip: data.skip }, null, 2)}\n`);
+    renameSync(tmp, path);
 }
 
 export function skipsFor(workspaceRoot: string, id: string): string[] {

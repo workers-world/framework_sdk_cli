@@ -16,6 +16,8 @@ function initGit(dir: string) {
     execFileSync('git', ['init', '-q'], { cwd: dir });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir });
     execFileSync('git', ['config', 'user.name', 'test'], { cwd: dir });
+    // 本机全局 commit.gpgsign=true 会让 git commit 走 gpg 签名（慢、易超时），测试内关闭
+    execFileSync('git', ['config', 'commit.gpgsign', 'false'], { cwd: dir });
     writeFileSync(join(dir, 'readme'), 'x');
     execFileSync('git', ['add', 'readme'], { cwd: dir });
     execFileSync('git', ['commit', '-qm', 'init'], { cwd: dir });

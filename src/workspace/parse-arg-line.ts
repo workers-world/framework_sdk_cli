@@ -1,4 +1,4 @@
-/** 与 workspace-tools.mjs parseArgLine 一致。 */
+/** 与 workspace-tools.mjs parseArgLine 一致；不支持反斜杠转义（引号内无转义语义，成对引号即闭合）。 */
 export function parseArgLine(line: string): string[] {
     const s = line.trim();
     if (!s) {
@@ -29,6 +29,10 @@ export function parseArgLine(line: string): string[] {
             continue;
         }
         cur += ch;
+    }
+    if (quote) {
+        // 未闭合引号此前会静默吞掉行尾（含后续参数）；必须显式报错，由调用层按 USAGE 展示
+        throw new Error(`error: 附加参数引号未闭合: ${s}`);
     }
     if (cur) {
         out.push(cur);

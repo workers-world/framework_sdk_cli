@@ -1,3 +1,4 @@
+import { once } from 'node:events';
 import { colorizeStatusLine } from '../cli/color.js';
 import { stripTrailingAsciiWhitespace } from '../strings/strip-trailing-ascii-whitespace.js';
 import {
@@ -104,14 +105,22 @@ export function needConfirmEnvelope(
     );
 }
 
-export function writeEnvelope(
+/** 写入并在背压时等待 drain，避免大信封经管道时被同步 exit 截断。 */
+async function writeDrained(stream: NodeJS.WritableStream, chunk: string): Promise<void> {
+    const flushed = stream.write(chunk);
+    if (!flushed) {
+        await once(stream as NodeJS.EventEmitter, 'drain');
+    }
+}
+
+export async function writeEnvelope(
     env: ProcessEnvelope,
     opts: { json: boolean; stdout?: NodeJS.WritableStream; stderr?: NodeJS.WritableStream },
-): void {
+): Promise<void> {
     const out = opts.stdout ?? process.stdout;
     const err = opts.stderr ?? process.stderr;
     if (opts.json || !(out as NodeJS.WriteStream & { isTTY?: boolean }).isTTY) {
-        out.write(`${JSON.stringify(env)}\n`);
+        await writeDrained(out, `${JSON.stringify(env)}\n`);
         return;
     }
     if (env.meta.suppress_tty_status) {
@@ -119,9 +128,9 @@ export function writeEnvelope(
     }
     if (env.ok) {
         const okLine = colorizeStatusLine(`${env.meta.command}: ok`, err, false);
-        err.write(`${okLine}\n`);
+        await writeDrained(err, `${okLine}\n`);
         if (env.data != null) {
-            out.write(`${JSON.stringify(env.data, null, 2)}\n`);
+            await writeDrained(out, `${JSON.stringify(env.data, null, 2)}\n`);
         }
         return;
     }
@@ -130,8 +139,8 @@ export function writeEnvelope(
         err,
         false,
     );
-    err.write(`${errLine}\n`);
+    await writeDrained(err, `${errLine}\n`);
     if (env.data != null) {
-        out.write(`${JSON.stringify(env.data, null, 2)}\n`);
+        await writeDrained(out, `${JSON.stringify(env.data, null, 2)}\n`);
     }
 }

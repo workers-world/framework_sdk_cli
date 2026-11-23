@@ -34,6 +34,21 @@ function rootOpts() {
     return { extraStarts: workspaceExtraRootStarts() };
 }
 
+/** parseArgLine 遇未闭合引号抛错 → 转 USAGE 信封（人类可读到 stderr），由各交互调用点复用。 */
+function argsLineOrEnvelope(
+    ctx: PortalContext,
+    sub: string,
+    line: string,
+): string[] | ProcessEnvelope {
+    try {
+        return parseArgLine(line);
+    } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        wtWriteStderr(ctx, `${message}\n`);
+        return wtErr(ctx, sub, EXIT.USAGE, { code: 'USAGE', message });
+    }
+}
+
 function rootOrEnvelope(ctx: PortalContext, sub: string): string | ProcessEnvelope {
     try {
         return requireWorkspaceRoot(rootOpts());
@@ -48,12 +63,13 @@ function scriptPath(root: string, tool: WorkspaceTool): string {
 }
 
 function printHelpTool(ctx: PortalContext, tool: WorkspaceTool): void {
+    // 执行页只保留摘要 + 指针：场景示例属派生信息，统一收在生成文档
+    // （ww 仓 docs/ww-wt-reference.md，npm run docs:wt 再生成），避免随实现漂移。
     const lines = [
         `${tool.id} — ${tool.title}`,
         tool.summary,
         `script: ${tool.script}`,
-        'examples:',
-        ...tool.examples.map((ex) => `  ${ex}`),
+        '用法与示例: ww 仓 docs/ww-wt-reference.md（生成物，勿手改）',
     ];
     wtWriteStdout(ctx, `${lines.join('\n')}\n`);
 }
@@ -160,15 +176,7 @@ async function executeTool(
     if (!existsSync(scriptPath(root, tool))) {
         wtWriteStderr(ctx, `error: 脚本不存在: ${tool.script}\n`);
         const data = runJsonData(tool.id, 1, args, []);
-        if (portalJson || ctx.json) {
-            return wtErr(
-                ctx,
-                sub,
-                1,
-                { code: 'SCRIPT_MISSING', message: `error: 脚本不存在: ${tool.script}` },
-                data,
-            );
-        }
+        // json / 非 json 两个分支原本内容完全相同（死代码），收敛为单个返回；行为不变
         return wtErr(
             ctx,
             sub,
@@ -178,10 +186,21 @@ async function executeTool(
         );
     }
 
-    const result = await runWorkspaceTool(tool, args, root, {
-        json: portalJson || ctx.json,
-        io: { stdout: ctx.stdout, stderr: ctx.stderr },
-    });
+    // applySkipArgs → skipsFor → loadSkipFile 可能因 skip 文件损坏抛 SkipFileParseError，
+    // 在调用层兜住（对齐 handleWtSkip 的 SKIP_FILE 错误路径），避免 run/直达子命令裸崩。
+    let result: Awaited<ReturnType<typeof runWorkspaceTool>>;
+    try {
+        result = await runWorkspaceTool(tool, args, root, {
+            json: portalJson || ctx.json,
+            io: { stdout: ctx.stdout, stderr: ctx.stderr },
+        });
+    } catch (e) {
+        if (e instanceof SkipFileParseError) {
+            wtWriteStderr(ctx, `${e.message}\n`);
+            return wtErr(ctx, sub, EXIT.USAGE, { code: 'SKIP_FILE', message: e.message });
+        }
+        throw e;
+    }
     if (result.spawnError) {
         wtWriteStderr(ctx, `error: 无法启动 ${tool.script}: ${result.spawnError}\n`);
         const data = runJsonData(tool.id, 127, result.argv, result.skip, {
@@ -420,7 +439,11 @@ async function interactiveSkip(
         skipUsageEnvelope(ctx, 'skip', EXIT.OK);
         return 0;
     }
-    const env = await handleWtSkip(parseArgLine(line), ctx);
+    const argsOrErr = argsLineOrEnvelope(ctx, 'skip', line);
+    if (!Array.isArray(argsOrErr)) {
+        return argsOrErr.meta.exit_code;
+    }
+    const env = await handleWtSkip(argsOrErr, ctx);
     return env.meta.exit_code;
 }
 
@@ -474,9 +497,12 @@ export async function handleWtInteractive(
                 : findWtExtension(pick);
         if (extPick) {
             const argLine = await question(rl, '附加参数（可空）: ');
-            const args = parseArgLine(argLine);
+            const argsOrErr = argsLineOrEnvelope(ctx, extPick.id, argLine);
+            if (!Array.isArray(argsOrErr)) {
+                return argsOrErr;
+            }
             prepareStdinForChildScript(rl);
-            return invokeWtExtension(extPick, args, ctx);
+            return invokeWtExtension(extPick, argsOrErr, ctx);
         }
         let tool: WorkspaceTool | undefined;
         if (/^\d+$/.test(pick)) {
@@ -490,13 +516,13 @@ export async function handleWtInteractive(
         }
         printHelpTool(ctx, tool);
         const argLine = await question(rl, '附加参数（可空；remote 须带 mode 如 cursor）: ');
-        const args = parseArgLine(argLine);
+        const argsOrErr = argsLineOrEnvelope(ctx, 'menu', argLine);
+        if (!Array.isArray(argsOrErr)) {
+            return argsOrErr;
+        }
+        const args = argsOrErr;
         if (tool.id === 'remote' && args.length === 0) {
             wtWriteStderr(ctx, 'remote 需要位置参数：ssh | https | cursor | github\n');
-            wtWriteStderr(ctx, 'examples:\n');
-            for (const ex of tool.examples) {
-                wtWriteStderr(ctx, `  ${ex}\n`);
-            }
             return wtErr(ctx, 'menu', EXIT.USAGE, {
                 code: 'USAGE',
                 message: 'remote 需要位置参数：ssh | https | cursor | github',
