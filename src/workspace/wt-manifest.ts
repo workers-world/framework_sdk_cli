@@ -50,8 +50,8 @@ export const wtToolManifest: ToolManifest = {
     apiVersion: 'ww.tool/v1',
     id: 'wt',
     title: '工作区工具',
-    summary:
-        'cloudflare_work workspace-tools（pull/push/here-push/bump-sdk/squash-bumps/remote/cloc）',
+    // 顶层披露一句话；子命令目录走 ww wt list / 生成文档 docs/ww-wt-reference.md
+    summary: 'cloudflare_work 工作区各仓批量操作与 SDK pin 升级',
     keywords: ['workspace', 'git', 'bulk', 'cloudflare_work', 'pull', 'push', 'wt'],
     version: '1.0.0',
     sdkRange: '^0.2.0',
