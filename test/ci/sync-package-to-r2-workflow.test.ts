@@ -9,6 +9,19 @@ const scriptsPkg = JSON.parse(readFileSync(join(root, '.github/scripts/package.j
 };
 
 describe('sync-package-to-r2 workflow (R2 AWS SDK install)', () => {
+    it('listens for CI and Publish on master via workflow_run', () => {
+        expect(workflow).toMatch(/workflow_run:/);
+        expect(workflow).toMatch(/workflows:\s*\["CI and Publish"\]/);
+        expect(workflow).toMatch(/branches:\s*\[master\]/);
+        expect(workflow).toMatch(/resolve-r2-sync-target\.mjs/);
+    });
+
+    it('keeps ubuntu-latest (not self-hosted)', () => {
+        expect(workflow).toMatch(/runs-on:\s*ubuntu-latest/);
+        expect(workflow).not.toMatch(/WORKERS_WORLD_GHA_RUNNER/);
+        expect(workflow).not.toMatch(/self-hosted/);
+    });
+
     it('does not use npx to load @aws-sdk/client-s3 (no bin / not on ESM path)', () => {
         // Ignore YAML comments; only reject a real shell/npx invocation.
         const runnable = workflow

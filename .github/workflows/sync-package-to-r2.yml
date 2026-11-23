@@ -1,7 +1,20 @@
-# Packages published → 拉 tarball 写入 R2（独立于 ci-publish）。
+# Packages published → 拉 tarball 写入 R2（独立于 ci-publish 的 publish job）。
+#
+# 自动同步主路径是 workflow_run，不是 registry_package。
+# ci-publish 用 GITHUB_TOKEN 执行 npm publish。GITHUB_TOKEN 触发的事件
+#（除 workflow_dispatch / repository_dispatch）不会再开 workflow run，
+# 因此 registry_package 在本仓从未触发过同步。workflow_run 由 Actions 在
+# 「CI and Publish」结束后触发，不受该限制。listener 须在仓库默认分支上生效。
+# registry_package 保留为次路径：UI / PAT 发布（非 GITHUB_TOKEN）仍能同步。
+#
+# Runner：本 workflow 沿用 GitHub-hosted ubuntu-latest（历史上手动 dispatch 已成功）。
 name: Sync published package to R2
 
 on:
+  workflow_run:
+    workflows: ["CI and Publish"]
+    types: [completed]
+    branches: [master]
   registry_package:
     types: [published]
   workflow_dispatch:
@@ -10,11 +23,19 @@ on:
         description: npm package name
         required: true
         default: '@workers-world/framework_sdk_cli'
+        type: string
       package_version:
         description: semver to sync
         required: true
+        type: string
+
+# 与 workers-world/ww 共用 manifest 键，串行写入避免互相覆盖。
+concurrency:
+  group: sync-published-package-to-r2
+  cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
   packages: read
 
@@ -22,10 +43,23 @@ jobs:
   sync-to-r2:
     if: >
       github.event_name == 'workflow_dispatch' ||
-      github.event.registry_package.name == '@workers-world/framework_sdk_cli'
+      (
+        github.event_name == 'workflow_run' &&
+        (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')
+      ) ||
+      github.event_name == 'registry_package'
     runs-on: ubuntu-latest
     steps:
+      # workflow_dispatch 用所选 ref（合入前可在 PR 分支上试跑）。
+      # 其它事件的 workflow 文件在默认分支；checkout 默认分支以拿到本脚本，
+      # 发布版本另从 master commit API 读取，避免把 destin 的 version 当成已发布版本。
       - uses: actions/checkout@v7
+        if: github.event_name == 'workflow_dispatch'
+
+      - uses: actions/checkout@v7
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          ref: ${{ github.event.repository.default_branch }}
 
       - uses: actions/setup-node@v5
         with:
@@ -35,27 +69,35 @@ jobs:
 
       - name: Resolve package coordinates
         id: coords
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "name=${{ inputs.package_name }}" >> "$GITHUB_OUTPUT"
-            echo "version=${{ inputs.package_version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=${{ github.event.registry_package.name }}" >> "$GITHUB_OUTPUT"
-            echo "version=${{ github.event.registry_package.version }}" >> "$GITHUB_OUTPUT"
-          fi
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PACKAGE_NAME: ${{ inputs.package_name }}
+          INPUT_PACKAGE_VERSION: ${{ inputs.package_version }}
+          REGISTRY_PACKAGE_NAME: ${{ github.event.registry_package.name }}
+          REGISTRY_PACKAGE_NAMESPACE: ${{ github.event.registry_package.namespace }}
+          REGISTRY_PACKAGE_VERSION: ${{ github.event.registry_package.package_version.version }}
+          REGISTRY_PACKAGE_VERSION_NAME: ${{ github.event.registry_package.package_version.name }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: node .github/scripts/resolve-r2-sync-target.mjs
 
       # 勿用 npx @aws-sdk/client-s3：无 bin，且 cache 不在脚本 ESM resolve 路径上。
       # 依赖见 .github/scripts/package.json；装到脚本旁的 node_modules 后 bare import 才可解析。
       - name: Install R2 client
+        if: steps.coords.outputs.skip != 'true'
         run: |
           set -euo pipefail
           npm install --prefix .github/scripts --no-package-lock
 
       - name: Sync tarball to R2
+        if: steps.coords.outputs.skip != 'true'
         env:
           PACKAGE_NAME: ${{ steps.coords.outputs.name }}
           PACKAGE_VERSION: ${{ steps.coords.outputs.version }}
+          SYNC_ON_MISSING: ${{ steps.coords.outputs.on_missing }}
           NODE_AUTH_TOKEN: ${{ secrets.WW_PACKAGES_READ_TOKEN || secrets.GITHUB_TOKEN }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
