@@ -1,4 +1,7 @@
 {
   "type": "sdk",
-  "npm": "@workers-world/framework_sdk_cli"
+  "npm": "@workers-world/framework_sdk_cli",
+  "deps": [
+    "worker-actions"
+  ]
 }
