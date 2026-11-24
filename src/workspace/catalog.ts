@@ -45,11 +45,14 @@ export const WORKSPACE_CATALOG: WorkspaceTool[] = [
         id: 'bump-sdk',
         title: '升 SDK 消费方',
         script: 'bump-sdk-consumers.sh',
-        summary: '升 framework_sdk_worker（及显式指定的包）；可选 --actions 升 worker-actions pin',
+        summary:
+            '按 .ww-repo.json kind 发现目标：sdk 升消费方 npm pin，action 升 workflow actions/v* pin；点名只扫点名仓；默认 dry-run，写入须 --apply 或 --confirm',
         examples: [
             'ww wt bump-sdk',
-            'ww wt bump-sdk --actions',
-            'ww wt bump-sdk 0.26.0 --check',
+            'ww wt bump-sdk --apply',
+            'ww wt bump-sdk --check',
+            'ww wt bump-sdk framework_sdk_ui worker-actions',
+            'ww wt bump-sdk --kind action',
             'ww wt skip add bump-sdk mok1',
         ],
         passthrough: true,
