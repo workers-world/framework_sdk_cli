@@ -62,13 +62,18 @@ function scriptPath(root: string, tool: WorkspaceTool): string {
     return join(root, tool.script);
 }
 
+/** 展示用路径：连续的 `../` 前缀折叠成 `…/`（如 ww 包装在 ~/.local/lib 时相对路径很长） */
+function prettyScriptPath(script: string): string {
+    return script.replace(/^(?:\.\.\/)+/, '…/');
+}
+
 function printHelpTool(ctx: PortalContext, tool: WorkspaceTool): void {
     // 执行页只保留摘要 + 指针：场景示例属派生信息，统一收在生成文档
     // （ww 仓 docs/ww-wt-reference.md，npm run docs:wt 再生成），避免随实现漂移。
     const lines = [
         `${tool.id} — ${tool.title}`,
         tool.summary,
-        `script: ${tool.script}`,
+        `script: ${prettyScriptPath(tool.script)}`,
         '用法与示例: ww 仓 docs/ww-wt-reference.md（生成物，勿手改）',
     ];
     wtWriteStdout(ctx, `${lines.join('\n')}\n`);
@@ -528,7 +533,7 @@ export async function handleWtInteractive(
                 message: 'remote 需要位置参数：ssh | https | cursor | github',
             });
         }
-        process.stdout.write(`\n→ ${tool.script} ${args.join(' ')}\n\n`);
+        process.stdout.write(`\n→ ${prettyScriptPath(tool.script)} ${args.join(' ')}\n\n`);
         prepareStdinForChildScript(rl);
         const env = await executeTool(ctx, 'menu', tool, args, false);
         return env;
