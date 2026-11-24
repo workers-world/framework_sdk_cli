@@ -14,6 +14,7 @@ import {
 } from './handlers.js';
 import { herePushExtension } from './here-push.js';
 import { squashBumpsExtension } from './squash-bumps.js';
+import { syncExtension } from './sync-check.js';
 import { wtCatalogSideEffects } from './wt-side-effects.js';
 
 export interface RegisterWorkspaceToolsOptions {
@@ -29,7 +30,12 @@ export interface RegisterWorkspaceToolsOptions {
  */
 export function registerWorkspaceTools(opts: RegisterWorkspaceToolsOptions = {}): void {
     setWorkspaceExtraRootStarts(opts.extraRootStarts ?? []);
-    const allExtensions = [squashBumpsExtension, herePushExtension, ...(opts.extensions ?? [])];
+    const allExtensions = [
+        squashBumpsExtension,
+        herePushExtension,
+        syncExtension,
+        ...(opts.extensions ?? []),
+    ];
     setWtPortalExtensions(allExtensions);
     const extIds = allExtensions.map((e) => e.id);
     const directCommands = WORKSPACE_CATALOG.map((s) => {

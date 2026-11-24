@@ -44,6 +44,7 @@ describe('ww wt workspace tools (WW-126)', () => {
             'cloc',
             'squash-bumps',
             'here-push',
+            'sync',
         ]);
         expect(data[0]?.title).toBe('批量拉取');
     });
