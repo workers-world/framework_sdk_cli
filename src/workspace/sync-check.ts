@@ -148,6 +148,17 @@ function issueLabel(issue: string): string {
     return ISSUE_LABELS[issue] ?? issue;
 }
 
+/** 展示用动态标签：未推送 commit 直接带条数（+N commit） */
+function issueLabelFor(issue: string, r: RepoSync): string {
+    if (issue === 'ahead') {
+        return `+${r.branch?.ahead ?? 0} commit`;
+    }
+    if (issue === 'prev_ahead') {
+        return `前一分支 +${r.prev?.ahead ?? 0} commit`;
+    }
+    return issueLabel(issue);
+}
+
 function inspectRepo(dir: string, label: string): RepoSync {
     const repo: RepoSync = {
         repo: label,
@@ -301,7 +312,7 @@ function printRepoLine(ctx: PortalContext, r: RepoSync): void {
     const status = r.synced ? 'OK  ' : 'WARN';
     const branch = r.branch?.branch ?? '(detached)';
     const dirty = r.dirtyCount > 0 ? ` 脏${r.dirtyCount}` : '';
-    const issues = r.issues.map(issueLabel).join('、');
+    const issues = r.issues.map((i) => issueLabelFor(i, r)).join('、');
     wtWriteStdout(ctx, `${status} ${r.repo}  ${branch}${dirty}${issues ? `（${issues}）` : ''}\n`);
     printBranchLine(ctx, '当前', branch, r.branch);
     if (r.prev) {
@@ -313,7 +324,7 @@ function printRepoLine(ctx: PortalContext, r: RepoSync): void {
 function compactRepoLine(ctx: PortalContext, r: RepoSync): void {
     const branch = r.branch?.branch ?? '(detached)';
     const dirty = r.dirtyCount > 0 ? ` 脏${r.dirtyCount}` : '';
-    const issues = r.issues.map(issueLabel).join('、');
+    const issues = r.issues.map((i) => issueLabelFor(i, r)).join('、');
     wtWriteStdout(ctx, `WARN ${r.repo}  ${branch}${dirty}${issues ? `（${issues}）` : ''}\n`);
 }
 

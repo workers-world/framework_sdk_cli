@@ -255,7 +255,7 @@ describe('ww wt sync', () => {
             stderr: nullIo(),
         });
         expect(compact.text()).not.toContain('feat: one more unpushed');
-        expect(strip(compact.text())).toContain('WARN demo  dev_00_01_00');
+        expect(strip(compact.text())).toContain('WARN demo  dev_00_01_00（前一分支 +1 commit）');
     });
 
     /** origin.git 已含 dev_00_01_00 / dev_00_02_00；在仓外 clone 上推进 origin/dev_00_02_00 */
