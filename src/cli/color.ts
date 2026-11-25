@@ -68,6 +68,9 @@ function levelForLine(line: string): 'error' | 'warn' | 'ok' | 'debug' | 'info' 
     if (/^FAIL\b/.test(t)) {
         return 'error';
     }
+    if (t.startsWith('!!')) {
+        return 'error';
+    }
     if (/^SKIP\b/.test(t)) {
         return 'warn';
     }
