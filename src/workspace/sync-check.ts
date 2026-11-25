@@ -129,6 +129,8 @@ interface RepoSync {
     branch: BranchSync | null;
     prev: BranchSync | null;
     issues: string[];
+    /** 基础过期：前一分支落后远端——基于它新开的分支没有建立在最新基线上 */
+    staleBase: boolean;
     synced: boolean;
 }
 
@@ -154,6 +156,7 @@ function inspectRepo(dir: string, label: string): RepoSync {
         branch: null,
         prev: null,
         issues: [],
+        staleBase: false,
         synced: false,
     };
     const status = git(['status', '--porcelain'], dir);
@@ -185,7 +188,9 @@ function inspectRepo(dir: string, label: string): RepoSync {
             if ((prev.ahead ?? 0) > 0) {
                 repo.issues.push('prev_ahead');
             }
-            if ((prev.behind ?? 0) > 0) {
+            // 基线过期只对还没 push 到远端的新分支判定：已 push 分支的基线漂移由
+            // push 流程（merge 前一档 origin/dev_* 后 push -u）自愈，不在这里置顶
+            if (!repo.branch?.upstream && (prev.behind ?? 0) > 0) {
                 repo.issues.push('prev_behind');
             }
         }
@@ -194,6 +199,7 @@ function inspectRepo(dir: string, label: string): RepoSync {
     if (repo.dirtyCount > 0) {
         repo.issues.push('dirty');
     }
+    repo.staleBase = repo.issues.includes('prev_behind');
     repo.synced = repo.issues.length === 0;
     return repo;
 }
@@ -206,12 +212,14 @@ function parseSyncArgv(argv: string[]): {
     here: boolean;
     fetch: boolean;
     gate: boolean;
+    verbose: boolean;
     exclude: string[];
     help: boolean;
 } {
     let here = false;
     let fetch = false;
     let gate = false;
+    let verbose = false;
     let help = false;
     const exclude: string[] = [];
     for (let i = 0; i < argv.length; i++) {
@@ -222,6 +230,8 @@ function parseSyncArgv(argv: string[]): {
             fetch = true;
         } else if (a === '--gate') {
             gate = true;
+        } else if (a === '--verbose' || a === '-v') {
+            verbose = true;
         } else if (a === '--exclude' && argv[i + 1]) {
             i += 1;
             exclude.push(argv[i] ?? '');
@@ -229,20 +239,24 @@ function parseSyncArgv(argv: string[]): {
             help = true;
         }
     }
-    return { here, fetch, gate, exclude, help };
+    return { here, fetch, gate, verbose, exclude, help };
 }
 
 function helpText(): string {
     return [
         'sync — 检查各仓是否已与远程同步（只读，不 push / 不改 remote）',
         '',
-        '默认扫 workspace 各仓：当前分支 + 前一分支（@{-1}）的 ahead/behind/未推送 commit、',
-        '工作区未提交改动、无远端参照的本地分支。开新版本前跑一次，绿色再继续。',
+        '默认扫 workspace 各仓：当前分支 + 前一分支（@{-1}）的 ahead/behind、脏区、无远端参照。',
+        '默认精简输出：先一行汇总，再按严重度分组；「前一分支落后远端」（基础过期——基于它',
+        '新开的分支没有建立在最新基线上）单独置顶重点标注，且只对尚未 push 到远端的新分支',
+        '判定（已 push 分支的基线漂移由 push 流程 merge 前一档自愈）。要看每仓完整明细（含',
+        '未推送 commit 主题）加 --verbose。开新分支/新版本前跑一次，绿色再继续。',
         '要推未同步的仓：单仓 ww wt here-push，批量 ww wt push。',
         '',
         '  --here          只查 cwd 所在仓',
         '  --fetch          先 fetch origin 再比对（默认用上次 fetch 的本地状态，快）',
         '  --exclude name   排除目录（可重复）',
+        '  --verbose, -v    输出每仓完整明细（未推送 commit 主题等）',
         '  --gate           有未同步项时 exit 非 0（可当开新版本前的硬闸）',
         '',
         'examples:',
@@ -295,9 +309,54 @@ function printRepoLine(ctx: PortalContext, r: RepoSync): void {
     }
 }
 
+/** 精简模式的一行一仓：不带明细子行，commit 主题等留给 --verbose */
+function compactRepoLine(ctx: PortalContext, r: RepoSync): void {
+    const branch = r.branch?.branch ?? '(detached)';
+    const dirty = r.dirtyCount > 0 ? ` 脏${r.dirtyCount}` : '';
+    const issues = r.issues.map(issueLabel).join('、');
+    wtWriteStdout(ctx, `WARN ${r.repo}  ${branch}${dirty}${issues ? `（${issues}）` : ''}\n`);
+}
+
+/** 基础过期（前一分支落后远端）置顶区块：基于它新开的分支没有建立在最新基线上 */
+function printStaleBaseSection(ctx: PortalContext, stale: RepoSync[], fetched: boolean): void {
+    if (stale.length === 0) {
+        return;
+    }
+    const cacheNote = fetched ? '' : '（基于本地 origin 缓存，建议 --fetch 复核）';
+    wtWriteStdout(
+        ctx,
+        `\n!! 基础过期 ${stale.length} 仓${cacheNote}：前一分支落后远端——基于它新开的分支未建立在最新基线上\n`,
+    );
+    for (const r of stale) {
+        const prev = r.prev;
+        if (!prev) {
+            continue;
+        }
+        const branch = r.branch?.branch ?? '(detached)';
+        const approx = prev.pseudoUpstream ? '（未跟踪，近似）' : '';
+        const counts: string[] = [];
+        if ((prev.ahead ?? 0) > 0) {
+            counts.push(`ahead ${prev.ahead}`);
+        }
+        if ((prev.behind ?? 0) > 0) {
+            counts.push(`behind ${prev.behind}`);
+        }
+        const diverged = (prev.ahead ?? 0) > 0 && (prev.behind ?? 0) > 0 ? '（分叉）' : '';
+        const dirty = r.dirtyCount > 0 ? `，脏${r.dirtyCount}` : '';
+        wtWriteStdout(
+            ctx,
+            `  !! ${r.repo}  当前 ${branch} ← 前一 ${prev.branch} ${counts.join(', ')}${diverged}（${prev.upstream}${approx}）${dirty}\n`,
+        );
+        wtWriteStdout(
+            ctx,
+            `     先在 ${prev.branch} 上 pull（单仓 git pull / 批量 ww wt pull），再 merge/rebase 到 ${branch}\n`,
+        );
+    }
+}
+
 export const handleWtSync: CommandHandler = async (argv, ctx) => {
     const sub = 'sync';
-    const { here, fetch, gate, exclude, help } = parseSyncArgv(argv);
+    const { here, fetch, gate, verbose, exclude, help } = parseSyncArgv(argv);
 
     if (help) {
         wtWriteStdout(ctx, `${helpText()}\n`);
@@ -338,6 +397,7 @@ export const handleWtSync: CommandHandler = async (argv, ctx) => {
     }
 
     const unsynced = results.filter((r) => !r.synced);
+    const stale = results.filter((r) => r.staleBase);
     const summary = {
         here,
         fetched: fetch,
@@ -345,20 +405,46 @@ export const handleWtSync: CommandHandler = async (argv, ctx) => {
         total: results.length,
         synced: results.length - unsynced.length,
         unsynced: unsynced.length,
+        staleBase: stale.length,
     };
 
     if (!ctx.json) {
-        for (const r of results) {
-            printRepoLine(ctx, r);
-        }
-        if (unsynced.length === 0) {
+        const synced = results.filter((r) => r.synced);
+        const others = unsynced.filter((r) => !r.staleBase);
+        if (verbose) {
+            for (const r of results) {
+                printRepoLine(ctx, r);
+            }
+            if (unsynced.length === 0) {
+                wtWriteStdout(ctx, `sync: ${summary.total}/${summary.total} 仓已同步\n`);
+            } else {
+                const names = unsynced.map((r) => r.repo).join(' ');
+                wtWriteStdout(
+                    ctx,
+                    `sync: ${summary.synced}/${summary.total} 已同步，未同步 ${unsynced.length}：${names}\n`,
+                );
+            }
+        } else if (unsynced.length === 0) {
             wtWriteStdout(ctx, `sync: ${summary.total}/${summary.total} 仓已同步\n`);
         } else {
-            const names = unsynced.map((r) => r.repo).join(' ');
-            wtWriteStdout(
-                ctx,
-                `sync: ${summary.synced}/${summary.total} 已同步，未同步 ${unsynced.length}：${names}\n`,
-            );
+            const parts = [`OK ${synced.length}`];
+            if (stale.length > 0) {
+                parts.push(`基础过期 ${stale.length}`);
+            }
+            if (others.length > 0) {
+                parts.push(`其他告警 ${others.length}`);
+            }
+            wtWriteStdout(ctx, `sync: ${summary.total} 仓 · ${parts.join(' · ')}\n`);
+            printStaleBaseSection(ctx, stale, fetch);
+            for (const r of others) {
+                compactRepoLine(ctx, r);
+            }
+            if (synced.length > 0) {
+                wtWriteStdout(
+                    ctx,
+                    `OK  ${synced.length}：${synced.map((r) => r.repo).join(' ')}\n`,
+                );
+            }
             wtWriteStderr(ctx, 'NOTE: 推送走 ww wt here-push（单仓）或 ww wt push（批量）\n');
         }
     }

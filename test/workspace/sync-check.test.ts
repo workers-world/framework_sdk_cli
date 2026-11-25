@@ -12,6 +12,10 @@ function nullIo() {
     return { write: () => true } as unknown as NodeJS.WritableStream;
 }
 
+// biome noControlCharactersInRegex 不允许 regex 字面量含 \x1b，用字符码构造
+const ESC = String.fromCharCode(27);
+const strip = (s: string) => s.replace(new RegExp(`${ESC}\\[[0-9;]*m`, 'g'), '');
+
 function captureIo() {
     const chunks: string[] = [];
     const stream = {
@@ -225,7 +229,7 @@ describe('ww wt sync', () => {
         }
     });
 
-    it('ahead 时人类输出列出未推送 commit 主题', async () => {
+    it('ahead 时人类输出列出未推送 commit 主题（--verbose）且默认精简不展示', async () => {
         g(repo, 'checkout', 'dev_00_02_00');
         g(repo, 'push', '-u', 'origin', 'dev_00_02_00');
         writeFileSync(join(repo, 'more.md'), 'x\n');
@@ -235,12 +239,132 @@ describe('ww wt sync', () => {
 
         const out = captureIo();
         await runPortal({
-            argv: ['wt', 'sync'],
+            argv: ['wt', 'sync', '--verbose'],
             noExit: true,
             stdout: out.stream,
             stderr: nullIo(),
         });
         expect(out.text()).toContain('feat: one more unpushed');
         expect(out.text()).toContain('demo  dev_00_01_00');
+
+        const compact = captureIo();
+        await runPortal({
+            argv: ['wt', 'sync'],
+            noExit: true,
+            stdout: compact.stream,
+            stderr: nullIo(),
+        });
+        expect(compact.text()).not.toContain('feat: one more unpushed');
+        expect(strip(compact.text())).toContain('WARN demo  dev_00_01_00');
+    });
+
+    /** origin.git 已含 dev_00_01_00 / dev_00_02_00；在仓外 clone 上推进 origin/dev_00_02_00 */
+    function advanceOriginPrev(bumpRoot: string): void {
+        const bumpRepo = join(bumpRoot, 'bump');
+        execFileSync('git', ['clone', '--quiet', join(realRoot, 'origin.git'), bumpRepo], {
+            stdio: 'ignore',
+        });
+        g(bumpRepo, 'config', 'user.email', 'test@example.com');
+        g(bumpRepo, 'config', 'user.name', 'test');
+        g(bumpRepo, 'config', 'commit.gpgsign', 'false');
+        g(bumpRepo, 'checkout', 'dev_00_02_00');
+        writeFileSync(join(bumpRepo, 'bump.md'), 'remote ahead\n');
+        g(bumpRepo, 'add', '.');
+        g(bumpRepo, 'commit', '-m', 'feat: remote advanced');
+        g(bumpRepo, 'push', 'origin', 'dev_00_02_00');
+    }
+
+    /** 仓内场景：dev_00_02_00 已 push，从它新开 dev_00_03_00（未 push，@{-1}=02） */
+    function freshBranchOnPushedPrev(): void {
+        g(repo, 'checkout', 'dev_00_02_00');
+        g(repo, 'push', '-u', 'origin', 'dev_00_02_00');
+        g(repo, 'checkout', '-b', 'dev_00_03_00');
+    }
+
+    it('前一分支落后远端且当前分支未 push → stale_base（基础过期）', async () => {
+        freshBranchOnPushedPrev();
+
+        const bump = mkdtempSync(join(tmpdir(), 'ww-sync-bump-'));
+        try {
+            advanceOriginPrev(bump);
+
+            const result = await runPortal({
+                argv: ['wt', 'sync', '--fetch', '--json'],
+                noExit: true,
+                stdout: nullIo(),
+                stderr: nullIo(),
+            });
+            expect(result.ok).toBe(true);
+            const data = result.data as {
+                staleBase: number;
+                repos: Array<{
+                    staleBase: boolean;
+                    issues: string[];
+                    prev: { branch: string; upstream: string; behind: number } | null;
+                }>;
+            };
+            const demo = data.repos[0];
+            expect(demo.issues).toContain('prev_behind');
+            expect(demo.staleBase).toBe(true);
+            expect(data.staleBase).toBe(1);
+            expect(demo.prev?.upstream).toBe('origin/dev_00_02_00');
+            expect(demo.prev?.behind).toBe(1);
+        } finally {
+            rmSync(bump, { recursive: true, force: true });
+        }
+    });
+
+    it('当前分支已 push 时基线漂移不算基础过期（push 流程 merge 前一档自愈）', async () => {
+        freshBranchOnPushedPrev();
+        g(repo, 'push', '-u', 'origin', 'dev_00_03_00');
+
+        const bump = mkdtempSync(join(tmpdir(), 'ww-sync-bump-'));
+        try {
+            advanceOriginPrev(bump);
+
+            const result = await runPortal({
+                argv: ['wt', 'sync', '--fetch', '--json'],
+                noExit: true,
+                stdout: nullIo(),
+                stderr: nullIo(),
+            });
+            expect(result.ok).toBe(true);
+            const data = result.data as {
+                staleBase: number;
+                repos: Array<{ staleBase: boolean; issues: string[] }>;
+            };
+            const demo = data.repos[0];
+            expect(demo.issues).not.toContain('prev_behind');
+            expect(demo.staleBase).toBe(false);
+            expect(data.staleBase).toBe(0);
+        } finally {
+            rmSync(bump, { recursive: true, force: true });
+        }
+    });
+
+    it('基础过期仓默认输出置顶 !! 区块且不重复出现在 WARN 行', async () => {
+        freshBranchOnPushedPrev();
+
+        const bump = mkdtempSync(join(tmpdir(), 'ww-sync-bump-'));
+        try {
+            advanceOriginPrev(bump);
+
+            const out = captureIo();
+            await runPortal({
+                argv: ['wt', 'sync', '--fetch'],
+                noExit: true,
+                stdout: out.stream,
+                stderr: nullIo(),
+            });
+            const text = strip(out.text());
+            expect(text).toContain('sync: 1 仓 · OK 0 · 基础过期 1');
+            expect(text).toContain('!! 基础过期 1 仓');
+            expect(text).toContain('!! demo  当前 dev_00_03_00 ← 前一 dev_00_02_00 behind 1');
+            expect(text).toContain('再 merge/rebase 到 dev_00_03_00');
+            // 不重复出现在精简 WARN 行（基础过期仓只进置顶区块）
+            expect(text).not.toContain('WARN demo');
+        } finally {
+            rmSync(bump, { recursive: true, force: true });
+        }
     });
 });
